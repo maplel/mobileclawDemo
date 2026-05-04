@@ -1,0 +1,23 @@
+appId: com.mobilebot
+name: Settings Configuration Flow
+---
+- launchApp
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "settings_button"
+- waitForAnimationToEnd
+
+- assertVisible: "Settings"
+- assertVisible: "AI Model Provider"
+- assertVisible: "API Key"
+- assertVisible: "Base URL"
+
+- tapOn:
+    text: "Gemini"
+- waitForAnimationToEnd
+
+- back
+- waitForAnimationToEnd
+
+- assertVisible: "MobileBot"

@@ -1,0 +1,12 @@
+{
+  "id": "trip_replan",
+  "name": "Trip Replanning",
+  "description": "Modify and optimize travel itineraries when plans change due to delays, cancellations, or new preferences",
+  "version": "1",
+  "category": "travel",
+  "triggers": ["trip", "itinerary", "replan", "reschedule", "delay", "cancel", "travel plan", "行程", "改签", "延误", "取消"],
+  "applicableTools": ["call_service", "read_user_profile", "open_map"],
+  "requiredServices": [],
+  "promptSummary": "Modify travel itineraries when plans change.",
+  "promptBody": "## Trip Replanning Procedure\n\n### Step 1: Understand the situation\n- What caused the change? (delay, cancellation, emergency, preference change)\n- How many days are affected?\n- What are the fixed constraints? (return date, must-see destinations)\n\n### Step 2: Load existing plan\n- Use read_user_profile(trip_plans) to get the current itinerary\n- Identify which segments are affected\n\n### Step 3: Calculate impact\n- How many days need to shift?\n- Which bookings (hotels, activities, flights) need to change?\n- What is the minimum disruption to preserve core experiences?\n\n### Step 4: Generate new plan\n- Shift affected days, preserving the overall structure\n- Prioritize: keep must-see experiences, compress or remove optional ones\n- Ensure logical geographic flow (no unnecessary backtracking)\n\n### Step 5: Present to user\n- Show side-by-side comparison: original vs revised\n- Highlight what changed and why\n- List action items: bookings to cancel, new bookings needed\n- Wait for user confirmation before making changes"
+}

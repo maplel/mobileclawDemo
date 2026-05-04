@@ -1,0 +1,12 @@
+{
+  "id": "dining",
+  "name": "Dining",
+  "description": "Search restaurants, check reviews, and make dining reservations",
+  "version": "1",
+  "category": "dining",
+  "triggers": ["restaurant", "dinner", "lunch", "breakfast", "eat", "food", "dining", "reservation", "table", "餐厅", "吃饭", "订位", "外卖", "美食"],
+  "applicableTools": ["call_service", "read_user_profile", "get_current_location", "open_map"],
+  "requiredServices": ["opentable"],
+  "promptSummary": "Search nearby restaurants first, then help refine or reserve if the user wants.",
+  "promptBody": "## Dining Procedure\n\n### Step 1: Start with the user's immediate goal\n- If the user says things like '帮我找个餐厅' or '附近有什么吃的', prefer quickly finding nearby restaurants instead of collecting a full reservation form first.\n- Only ask for extra details early when they are truly necessary.\n\n### Step 2: Determine search area\n- If the user already gave an area or address, use it directly.\n- If they want nearby options, use get_current_location.\n- If nearby search is enough to help the user, you may use open_map with a query like '附近餐厅' or continue with call_service(opentable, searchRestaurants).\n\n### Step 3: Search restaurants\n- After get_current_location succeeds, continue to restaurant search. Do NOT end the turn with only coordinates unless the user explicitly asked for location only.\n- Use call_service(opentable, searchRestaurants) when you can search with available context.\n- Use open_map when the user intent is more about browsing/searching nearby places on a map.\n- Use read_user_profile(preferences, dining) only when it materially improves the recommendation.\n- Filter by cuisine, rating, distance, and price range when that information is available.\n\n### Step 4: Present useful next steps\n- Show a short list of nearby or matching restaurants first.\n- If needed, then ask a concise follow-up about time, party size, cuisine, or budget.\n- Use selectable options only for small, obvious choices such as current location / saved address / manual entry, yes / no, or choosing among a short known list.\n\n### Step 5: Reservation\n- After the user picks a restaurant and wants to book, use call_service(opentable, checkAvailability) or makeReservation as appropriate.\n- Confirm restaurant name, date, time, party size, and confirmation number.\n- Use open_map to show restaurant location and directions when helpful."
+}

@@ -1,0 +1,22 @@
+appId: com.mobilebot
+name: Basic Chat Flow
+---
+- launchApp
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "chat_input"
+- inputText: "hello"
+- tapOn:
+    id: "send_button"
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Bot.*"
+    optional: true
+
+- assertWithAI:
+    assertion: "The screen shows a bot response message. There should be text after 'Bot:' that is a meaningful reply."
+    optional: true

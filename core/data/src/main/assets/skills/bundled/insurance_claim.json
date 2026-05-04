@@ -1,0 +1,12 @@
+{
+  "id": "insurance_claim",
+  "name": "Insurance Claim",
+  "description": "File insurance claims, retrieve policy details, and track claim status",
+  "version": "1",
+  "category": "insurance",
+  "triggers": ["insurance", "claim", "policy", "deductible", "coverage", "geico", "保险", "理赔", "保单"],
+  "applicableTools": ["call_service", "read_user_profile", "get_current_location", "open_camera"],
+  "requiredServices": ["geico"],
+  "promptSummary": "File insurance claims and manage policy information.",
+  "promptBody": "## Insurance Claim Procedure\n\n### Step 1: Retrieve policy information\n- Use read_user_profile(insurance) to get the user's policy details\n- Note policy number, coverage type, and deductible\n\n### Step 2: Gather incident details\n- Location: use get_current_location\n- Time of incident\n- Description of what happened\n- Other parties involved (names, license plates, insurance info)\n- Police report number if available\n\n### Step 3: Document evidence\n- Remind user to use open_camera for photos of damage\n- List required documentation: photos, police report, witness info\n\n### Step 4: File the claim\n- Use call_service(geico, fileClaim) with all gathered information\n- Confirm claim number with user\n- Note expected timeline and next steps\n\n### Step 5: Follow up\n- Summarize claim details for user's records\n- Provide claim number and contact information for follow-up\n- Note deductible amount and coverage details"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "tow_and_repair",
+  "name": "Tow & Repair",
+  "description": "Request towing service, find repair shops, and schedule vehicle repairs",
+  "version": "1",
+  "category": "automotive",
+  "triggers": ["tow", "towing", "repair", "mechanic", "garage", "breakdown", "flat tire", "battery", "AAA", "roadside", "拖车", "修车", "抛锚"],
+  "applicableTools": ["call_service", "read_user_profile", "get_current_location", "open_map"],
+  "requiredServices": ["aaa_roadside"],
+  "promptSummary": "Request towing and schedule vehicle repairs.",
+  "promptBody": "## Tow & Repair Procedure\n\n### Step 1: Check membership\n- Use read_user_profile(membership, AAA) to check roadside assistance membership\n- If member, proceed with AAA; otherwise search for nearby towing services\n\n### Step 2: Get location\n- Use get_current_location for precise pickup coordinates\n\n### Step 3: Request tow\n- Use call_service(aaa_roadside, requestTow) with current location\n- Specify vehicle info from read_user_profile(vehicles)\n- Note estimated arrival time\n\n### Step 4: Find repair facility\n- Use call_service(aaa_roadside, findServiceCenter) to locate nearest authorized service center\n- Consider: distance, ratings, whether they service user's vehicle make\n- Use open_map to show directions\n\n### Step 5: Schedule repair\n- Use call_service to book a repair appointment\n- Confirm drop-off time and estimated repair duration\n\n### Step 6: Arrange transportation\n- Check if insurance covers rental car via read_user_profile(insurance)\n- Search for nearby rental car agencies if needed\n- Provide user with all booking confirmations"
+}

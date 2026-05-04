@@ -1,0 +1,12 @@
+{
+  "id": "flight_booking",
+  "name": "Flight Booking",
+  "description": "Search flights, compare prices, and book airline tickets",
+  "version": "1",
+  "category": "travel",
+  "triggers": ["flight", "fly", "airline", "airport", "boarding", "机票", "航班", "飞机"],
+  "applicableTools": ["call_service", "read_user_profile"],
+  "requiredServices": ["ctrip"],
+  "promptSummary": "Search and book flights.",
+  "promptBody": "## Flight Booking Procedure\n\n### Step 1: Gather requirements\n- From where to where?\n- Departure and return dates\n- Number of passengers\n- Class preference (economy, business, first)\n- Direct flights only or connections OK?\n\n### Step 2: Check preferences\n- Use read_user_profile(membership) for frequent flyer programs\n- Use read_user_profile(preferences, travel) for seat and airline preferences\n\n### Step 3: Search flights\n- Use call_service(ctrip, searchFlights) with travel parameters\n- Sort by: price, duration, number of stops, departure time\n\n### Step 4: Present options\n- Show top 3-5 flight options\n- Include: airline, departure/arrival times, duration, stops, price\n- Highlight frequent flyer benefits\n\n### Step 5: Book\n- After user confirms, use call_service(ctrip, bookFlight)\n- Provide confirmation number, check-in instructions\n- Note baggage allowance and seat assignment"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "file.demo_skill",
+  "name": "DemoSkill",
+  "description": "When the user asks for a demo skill response, answer briefly and mention this skill.",
+  "triggers": ["demo skill", "demo skill response"],
+  "applicableTools": ["open_url"]
+}

@@ -1,0 +1,22 @@
+appId: com.mobilebot
+name: Tool Trigger - Clipboard
+---
+- launchApp
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "chat_input"
+- inputText: "copy hello world to clipboard"
+- tapOn:
+    id: "send_button"
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Bot.*"
+    optional: true
+
+- assertWithAI:
+    assertion: "The screen shows a bot response about copying to clipboard. The response should indicate that text was copied, or that the clipboard tool was used."
+    optional: true

@@ -1,0 +1,12 @@
+{
+  "id": "emergency_response",
+  "name": "Emergency Response",
+  "description": "Handle emergency situations: call 911, notify emergency contacts, record evidence",
+  "version": "1",
+  "category": "emergency",
+  "triggers": ["emergency", "911", "help", "crash", "accident", "hurt", "injured", "ambulance", "fire", "police", "报警", "急救", "紧急", "车祸", "出事"],
+  "applicableTools": ["dial_number", "get_current_location", "send_sms", "open_camera", "search_contacts", "read_user_profile"],
+  "requiredServices": [],
+  "promptSummary": "Handle emergency situations by calling 911, notifying contacts, and recording evidence.",
+  "promptBody": "## Emergency Response Procedure\n\n### Step 1: Assess and locate\n- Use get_current_location to get precise GPS coordinates\n- Note the address and any landmarks for dispatch\n\n### Step 2: Call emergency services\n- Use dial_number to call 911 (or local emergency number)\n- Prepare to relay: location, nature of emergency, number of people involved, injuries\n\n### Step 3: Notify emergency contacts\n- Use read_user_profile(emergency_contacts) to get contact list\n- Use send_sms to notify each contact with location and situation summary\n- Include a map link with coordinates\n\n### Step 4: Document the scene\n- Use open_camera to help user photograph the scene\n- Remind user to capture: damage, license plates, surroundings, injuries\n\n### Step 5: Stay with user\n- Provide reassurance\n- Track ETA of emergency services if available\n- Ask if additional help is needed"
+}

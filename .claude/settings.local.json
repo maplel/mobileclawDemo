@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :core:domain:compileDebugKotlin :core:data:compileDebugKotlin --no-daemon)",
+      "Bash(gradlew.bat :core:domain:compileDebugKotlin :core:data:compileDebugKotlin --no-daemon)",
+      "Bash(gradlew.bat :core:domain:testDebugUnitTest --no-daemon)",
+      "Bash(gradlew.bat :core:domain:testDebugUnitTest :core:data:testDebugUnitTest :core:bridge:testDebugUnitTest --no-daemon)",
+      "Bash(gradlew.bat assembleDebug --no-daemon)",
+      "Bash(adb shell *)",
+      "Bash(gradlew.bat :core:domain:testDebugUnitTest --tests \"com.mobilebot.domain.memory.*\" --no-daemon)",
+      "Bash(./gradlew :core:domain:testDebugUnitTest --tests \"com.mobilebot.domain.memory.*\")",
+      "Bash(cmd /c \"gradlew.bat\" :core:domain:testDebugUnitTest --tests \"com.mobilebot.domain.memory.*\")",
+      "Bash(bash -c \"cmd /c 'gradlew.bat :core:domain:testDebugUnitTest --tests com.mobilebot.domain.memory.* --info'\")",
+      "PowerShell(.\\\\gradlew.bat :feature:chat:compileDebugKotlin 2>&1 | Select-Object -Last 80)",
+      "PowerShell(.\\\\gradlew.bat :feature:chat:compileDebugKotlin 2>&1 | Select-Object -Last 60)",
+      "PowerShell(.\\\\gradlew.bat :feature:chat:compileDebugKotlin 2>&1 | Select-Object -Last 40)",
+      "PowerShell(.\\\\gradlew.bat assembleDebug 2>&1 | Select-Object -Last 30)",
+      "PowerShell(.\\\\gradlew.bat test 2>&1 | Select-Object -Last 30)",
+      "PowerShell(.\\\\gradlew.bat lintDebug 2>&1 | Select-Object -Last 20)",
+      "PowerShell(.\\\\gradlew.bat :feature:chat:compileDebugKotlin 2>&1 | Select-Object -Last 20)",
+      "Bash(./gradlew.bat :feature:chat:compileDebugKotlin --no-daemon)",
+      "Bash(./gradlew.bat assembleDebug --no-daemon)",
+      "Bash(GRADLE_OPTS=\"-Xmx2g\" ./gradlew :feature:chat:compileDebugKotlin --no-daemon)",
+      "PowerShell(cd D:\\\\mobileclaw-main; $env:GRADLE_OPTS=\"-Xmx2g\"; .\\\\gradlew.bat :feature:chat:compileDebugKotlin --no-daemon 2>&1 | Select-Object -Last 20)",
+      "PowerShell(cd D:\\\\mobileclaw-main; $env:GRADLE_OPTS=\"-Xmx2g\"; .\\\\gradlew.bat :feature:chat:compileDebugKotlin --no-daemon 2>&1 | Select-Object -Last 10)",
+      "PowerShell(cd D:\\\\mobileclaw-main; $env:GRADLE_OPTS=\"-Xmx2g\"; .\\\\gradlew.bat :feature:chat:compileDebugKotlin --no-daemon 2>&1 | Select-String \"error|Error|e:\")",
+      "PowerShell(cd D:\\\\mobileclaw-main; $env:GRADLE_OPTS=\"-Xmx2g\"; .\\\\gradlew.bat :feature:chat:compileDebugKotlin --no-daemon 2>&1 | Select-Object -Last 3)"
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "id": "aaa_roadside",
+  "name": "AAA Roadside Assistance",
+  "category": "automotive",
+  "baseUrl": "https://api.aaa.com/v2",
+  "authType": "api_key",
+  "actions": [
+    {
+      "name": "requestTow",
+      "method": "POST",
+      "path": "/roadside/tow",
+      "description": "Request a tow truck to current location with destination service center",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "checkMembership",
+      "method": "GET",
+      "path": "/members/{memberId}/status",
+      "description": "Verify AAA membership status and towing coverage limits"
+    },
+    {
+      "name": "findServiceCenter",
+      "method": "GET",
+      "path": "/facilities/search",
+      "description": "Find nearby AAA-approved service centers by location and vehicle make"
+    },
+    {
+      "name": "getTowStatus",
+      "method": "GET",
+      "path": "/roadside/tow/{requestId}/status",
+      "description": "Check ETA and status of a dispatched tow truck"
+    }
+  ]
+}

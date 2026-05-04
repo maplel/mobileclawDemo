@@ -1,0 +1,52 @@
+appId: com.mobilebot
+name: Setup Qwen LLM
+---
+- launchApp
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "settings_button"
+- waitForAnimationToEnd
+
+- assertVisible: "Settings"
+
+- tapOn:
+    id: "settings_api_key"
+- eraseText:
+    charactersToErase: 100
+- inputText: "sk-d8864932724f4476b5c555f01d58e04f"
+
+- scrollUntilVisible:
+    element:
+        text: ".*Qwen.*"
+    direction: DOWN
+
+- tapOn:
+    text: ".*Qwen.*"
+- waitForAnimationToEnd
+
+- scrollUntilVisible:
+    element: "qwen-plus"
+    direction: DOWN
+
+- tapOn:
+    text: "qwen-plus"
+- waitForAnimationToEnd
+
+- scrollUntilVisible:
+    element: "Save"
+    direction: DOWN
+
+- tapOn:
+    id: "settings_save"
+- waitForAnimationToEnd
+
+- scrollUntilVisible:
+    element: "Back"
+    direction: UP
+
+- tapOn:
+    text: "Back"
+- waitForAnimationToEnd
+
+- assertVisible: "MobileBot"

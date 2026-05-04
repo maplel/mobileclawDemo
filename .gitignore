@@ -1,0 +1,28 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local SDK / machine paths
+local.properties
+
+# Android Studio / IDEA
+.idea/
+*.iml
+.cxx/
+.externalNativeBuild/
+.kotlin/
+
+# Keystore (if ever added)
+*.jks
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local runtime / crash artifacts
+hs_err_pid*.log
+replay_pid*.log
+maestro_hierarchy.txt
+artifacts/device-db/

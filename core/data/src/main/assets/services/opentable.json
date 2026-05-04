@@ -1,0 +1,40 @@
+{
+  "id": "opentable",
+  "name": "OpenTable Restaurant Reservations",
+  "category": "dining",
+  "baseUrl": "https://api.opentable.com/v2",
+  "authType": "api_key",
+  "actions": [
+    {
+      "name": "searchRestaurants",
+      "method": "GET",
+      "path": "/restaurants/search",
+      "description": "Search restaurants by location, cuisine, price range, and availability"
+    },
+    {
+      "name": "getRestaurant",
+      "method": "GET",
+      "path": "/restaurants/{restaurantId}",
+      "description": "Get detailed restaurant information including menu, hours, and reviews"
+    },
+    {
+      "name": "checkAvailability",
+      "method": "GET",
+      "path": "/restaurants/{restaurantId}/availability",
+      "description": "Check table availability for a specific date, time, and party size"
+    },
+    {
+      "name": "makeReservation",
+      "method": "POST",
+      "path": "/reservations",
+      "description": "Make a dining reservation",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "cancelReservation",
+      "method": "DELETE",
+      "path": "/reservations/{reservationId}",
+      "description": "Cancel an existing reservation"
+    }
+  ]
+}

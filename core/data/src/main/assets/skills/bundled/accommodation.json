@@ -1,0 +1,12 @@
+{
+  "id": "accommodation",
+  "name": "Accommodation",
+  "description": "Search and book hotels, check availability, and manage hotel reservations",
+  "version": "1",
+  "category": "travel",
+  "triggers": ["hotel", "motel", "inn", "accommodation", "stay", "lodge", "booking", "reservation", "check-in", "酒店", "住宿", "订房", "民宿"],
+  "applicableTools": ["call_service", "read_user_profile", "get_current_location", "open_map"],
+  "requiredServices": ["marriott"],
+  "promptSummary": "Search and book accommodations based on location, preferences, and budget.",
+  "promptBody": "## Accommodation Booking Procedure\n\n### Step 1: Gather requirements\n- Where? (city, near a specific address, or current location via get_current_location)\n- When? (check-in and check-out dates)\n- How many guests?\n- Budget range?\n\n### Step 2: Check preferences\n- Use read_user_profile(preferences, accommodation) for: brand loyalty, room type, pet policy, amenities\n- Use read_user_profile(membership) for hotel loyalty program numbers\n\n### Step 3: Search options\n- Use call_service with hotel booking APIs to search\n- Filter by: distance, rating (>4.0), price, pet-friendly if needed, breakfast included\n- Sort by best match to user preferences\n\n### Step 4: Present options\n- Show top 3 options with: name, price, distance, rating, key amenities\n- Highlight loyalty program benefits (points, discounts)\n- Note cancellation policy\n\n### Step 5: Book\n- After user confirms, use call_service to complete booking\n- Apply loyalty number and any available discounts\n- Provide confirmation number and address\n- Use open_map to show hotel location"
+}
