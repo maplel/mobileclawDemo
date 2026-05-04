@@ -23,9 +23,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class ChatSessionUi(
+    val chatId: String,
+    val title: String,
+    val updatedAt: Long,
+)
 
 @Singleton
 class ChatStateManager @Inject constructor(
@@ -40,6 +49,9 @@ class ChatStateManager @Inject constructor(
     
     private val _currentChatId = MutableStateFlow("")
     val currentChatId: StateFlow<String> = _currentChatId.asStateFlow()
+
+    private val _sessions = MutableStateFlow<List<ChatSessionUi>>(emptyList())
+    val sessionsList: StateFlow<List<ChatSessionUi>> = _sessions.asStateFlow()
 
     private val _lines = MutableStateFlow<List<ChatLine>>(emptyList())
     val lines: StateFlow<List<ChatLine>> = _lines.asStateFlow()
@@ -132,11 +144,11 @@ class ChatStateManager @Inject constructor(
 
     private suspend fun initFromDatabase() {
         withContext(Dispatchers.IO) {
-            val metas = sessions.listSessionMetas()
-            val latest = metas.firstOrNull()
+            refreshSessions()
+            val latest = _sessions.value.firstOrNull()
             if (latest != null) {
-                _currentChatId.value = latest.sessionKey
-                loadMessagesFor(latest.sessionKey)
+                _currentChatId.value = latest.chatId
+                loadMessagesFor(latest.chatId)
             } else {
                 _currentChatId.value = UUID.randomUUID().toString()
             }
@@ -144,13 +156,29 @@ class ChatStateManager @Inject constructor(
     }
 
     private suspend fun loadMessagesFor(chatId: String) {
-        val msgs = sessions.getMessages(chatId)
+        val msgs = sessions.getMessages(sessionKeyFor(chatId))
         _lines.value = msgs.map { msg ->
             when (msg.role) {
                 ChatRole.User -> ChatLine.User(msg.content)
-                else -> ChatLine.Assistant(msg.content)
+                ChatRole.Assistant -> ChatLine.Assistant(msg.content)
+                ChatRole.System -> ChatLine.SystemNote(msg.content)
+                ChatRole.Tool -> ChatLine.Progress("${msg.toolName ?: "tool"}: ${msg.content.take(80)}")
             }
         }
+    }
+
+    private suspend fun refreshSessions() {
+        val metas = sessions.listSessionMetas()
+        val items = metas.map { meta ->
+            val chatId = chatIdFromSessionKey(meta.sessionKey)
+            val firstUser = sessions.getFirstUserContent(meta.sessionKey)
+            ChatSessionUi(
+                chatId = chatId,
+                title = firstUser?.take(24)?.ifBlank { null } ?: titleForEmptySession(meta.updatedAt),
+                updatedAt = meta.updatedAt,
+            )
+        }
+        _sessions.value = items
     }
 
     fun send(text: String) {
@@ -165,6 +193,9 @@ class ChatStateManager @Inject constructor(
             try {
                 foreground.onAgentStart()
                 agent.processUserMessage(chatId, trimmed)
+                withContext(Dispatchers.IO) {
+                    refreshSessions()
+                }
             } catch (e: Exception) {
                 Log.e("ChatStateManager", "Error processing message", e)
                 _lines.update { it + ChatLine.SystemNote("Error: ${e.message}") }
@@ -195,5 +226,43 @@ class ChatStateManager @Inject constructor(
             capabilityApprovalGate.respond(result)
             _pendingCapabilityRequest.value = null
         }
+    }
+
+    fun startNewChat() {
+        if (_busy.value) return
+        _currentChatId.value = UUID.randomUUID().toString()
+        _lines.value = emptyList()
+        _runtimeState.value = ""
+    }
+
+    fun switchChat(chatId: String) {
+        if (_busy.value || chatId == _currentChatId.value) return
+        scope.launch {
+            _currentChatId.value = chatId
+            _runtimeState.value = ""
+            withContext(Dispatchers.IO) {
+                loadMessagesFor(chatId)
+                refreshSessions()
+            }
+        }
+    }
+
+    fun refreshChatSessions() {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                refreshSessions()
+            }
+        }
+    }
+
+    private fun sessionKeyFor(chatId: String): String =
+        if (chatId.startsWith("mobile:")) chatId else "mobile:$chatId"
+
+    private fun chatIdFromSessionKey(sessionKey: String): String =
+        sessionKey.removePrefix("mobile:")
+
+    private fun titleForEmptySession(updatedAt: Long): String {
+        val formatter = SimpleDateFormat("MM-dd HH:mm", Locale.US)
+        return "New chat ${formatter.format(Date(updatedAt))}"
     }
 }

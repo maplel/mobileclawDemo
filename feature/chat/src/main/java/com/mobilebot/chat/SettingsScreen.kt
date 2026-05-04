@@ -410,6 +410,7 @@ private fun androidPermissionsFor(capability: AgentCapability): Array<String> =
             )
         AgentCapability.CONTACTS -> arrayOf(Manifest.permission.READ_CONTACTS)
         AgentCapability.SMS -> arrayOf(Manifest.permission.SEND_SMS)
+        AgentCapability.CALENDAR -> arrayOf(Manifest.permission.READ_CALENDAR)
         AgentCapability.CAMERA -> arrayOf(Manifest.permission.CAMERA)
         else -> emptyArray()
     }

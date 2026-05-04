@@ -35,6 +35,7 @@ class AndroidCapabilityProbe @Inject constructor(
                 "telephony.dial" -> true
                 "messaging.sms" -> true
                 "messaging.sms.send" -> true
+                "calendar.read" -> true
                 "share.generic" -> true
                 "location.coarse" -> true
                 "contacts.read" -> true
