@@ -26,12 +26,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -65,6 +69,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mobilebot.domain.permissions.CapabilityApprovalResult
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun ChatOverlayContent(
@@ -90,9 +97,12 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val lines by viewModel.lines.collectAsState()
+    val currentChatId by viewModel.currentChatId.collectAsState()
+    val sessionsList by viewModel.sessionsList.collectAsState()
     val busy by viewModel.busy.collectAsState()
     val runtimeState by viewModel.runtimeState.collectAsState()
     val pendingCapRequest by viewModel.pendingCapabilityRequest.collectAsState()
+    var sessionMenuOpen by remember { mutableStateOf(false) }
 
     pendingCapRequest?.let { request ->
         PermissionChoiceDialog(
@@ -110,6 +120,61 @@ fun ChatScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 actions = {
+                    IconButton(
+                        onClick = { viewModel.startNewChat() },
+                        enabled = !busy,
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "New chat", tint = MaterialTheme.colorScheme.onBackground)
+                    }
+                    Box {
+                        IconButton(
+                            onClick = {
+                                viewModel.refreshChatSessions()
+                                sessionMenuOpen = true
+                            },
+                        ) {
+                            Icon(Icons.Default.Menu, contentDescription = "Chat history", tint = MaterialTheme.colorScheme.onBackground)
+                        }
+                        DropdownMenu(
+                            expanded = sessionMenuOpen,
+                            onDismissRequest = { sessionMenuOpen = false },
+                        ) {
+                            if (sessionsList.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No saved chats") },
+                                    onClick = { sessionMenuOpen = false },
+                                )
+                            } else {
+                                sessionsList.forEach { session ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(
+                                                    text = session.title,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                Text(
+                                                    text = formatSessionTime(session.updatedAt),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            viewModel.switchChat(session.chatId)
+                                            sessionMenuOpen = false
+                                        },
+                                        leadingIcon = {
+                                            if (session.chatId == currentChatId) {
+                                                Text("•", color = MaterialTheme.colorScheme.primary)
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onBackground)
                     }
@@ -508,4 +573,9 @@ private fun formatToNaturalEnglish(text: String): String {
         clean.length > 60 -> clean.take(57) + "..."
         else -> clean.ifBlank { "Processing..." }.replaceFirstChar { it.uppercase() }
     }
+}
+
+private fun formatSessionTime(updatedAt: Long): String {
+    val formatter = SimpleDateFormat("MM-dd HH:mm", Locale.US)
+    return formatter.format(Date(updatedAt))
 }

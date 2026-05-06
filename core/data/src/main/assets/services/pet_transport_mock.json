@@ -1,0 +1,41 @@
+{
+  "id": "pet_transport_mock",
+  "name": "Mock Pet Transport Service",
+  "category": "transport",
+  "baseUrl": "https://mock.pettransport.local/api/v1",
+  "authType": "none",
+  "actions": [
+    {
+      "name": "estimate_transport",
+      "method": "GET",
+      "path": "/transport/estimate",
+      "description": "Estimate pet pickup/dropoff or same-city pet product delivery"
+    },
+    {
+      "name": "request_transport",
+      "method": "POST",
+      "path": "/transport",
+      "description": "Request pet pickup/dropoff or same-city pet product delivery",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "modify_transport",
+      "method": "PATCH",
+      "path": "/transport/{transportId}",
+      "description": "Modify an existing pet transport request"
+    },
+    {
+      "name": "cancel_transport",
+      "method": "DELETE",
+      "path": "/transport/{transportId}",
+      "description": "Cancel a pet transport request",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "get_transport_status",
+      "method": "GET",
+      "path": "/transport/{transportId}",
+      "description": "Get current pet transport status"
+    }
+  ]
+}

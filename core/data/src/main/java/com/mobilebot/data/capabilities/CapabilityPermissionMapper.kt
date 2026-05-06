@@ -23,6 +23,9 @@ object CapabilityPermissionMapper {
                 "messaging.sms.send" -> {
                     out.add(Manifest.permission.SEND_SMS)
                 }
+                "calendar.read" -> {
+                    out.add(Manifest.permission.READ_CALENDAR)
+                }
                 else -> Unit
             }
         }

@@ -45,6 +45,8 @@ data class SkillManifest(
     val composesSkills: List<String> = emptyList(),
     val userConfirmationPoints: List<String> = emptyList(),
     val requiredServices: List<String> = emptyList(),
+    val references: List<String> = emptyList(),
+    val runtimeContext: List<String> = emptyList(),
 
     // --- Invocation control ---
     val always: Boolean = false,

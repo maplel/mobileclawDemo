@@ -1,0 +1,121 @@
+{
+  "id": "pet_store_mock",
+  "name": "Mock Pet Store Service",
+  "category": "life-service",
+  "baseUrl": "https://mock.petstore.local/api/v1",
+  "authType": "none",
+  "actions": [
+    {
+      "name": "list_locations",
+      "method": "GET",
+      "path": "/locations",
+      "description": "List nearby pet store locations with business hours and service radius"
+    },
+    {
+      "name": "list_services",
+      "method": "GET",
+      "path": "/services",
+      "description": "List grooming services (bath, teeth brushing, etc.) by pet type"
+    },
+    {
+      "name": "list_products",
+      "method": "GET",
+      "path": "/products",
+      "description": "List pet products (food, litter, supplies) by pet type and category"
+    },
+    {
+      "name": "query_inventory",
+      "method": "GET",
+      "path": "/inventory",
+      "description": "Check product inventory at a specific store"
+    },
+    {
+      "name": "list_promotions",
+      "method": "GET",
+      "path": "/promotions",
+      "description": "List current promotions and discounts"
+    },
+    {
+      "name": "get_store_calendar",
+      "method": "GET",
+      "path": "/stores/{storeId}/calendar",
+      "description": "Get store calendar with business hours, breaks, and booked slots"
+    },
+    {
+      "name": "query_availability",
+      "method": "GET",
+      "path": "/availability",
+      "description": "Query available appointment time slots for a service at a store"
+    },
+    {
+      "name": "list_user_addresses",
+      "method": "GET",
+      "path": "/user/addresses",
+      "description": "List saved pickup or delivery addresses for pet services"
+    },
+    {
+      "name": "save_user_address",
+      "method": "POST",
+      "path": "/user/addresses",
+      "description": "Save or update a pickup or delivery address for future pet services"
+    },
+    {
+      "name": "list_pet_profiles",
+      "method": "GET",
+      "path": "/pets",
+      "description": "List saved pet profiles and pet service preferences"
+    },
+    {
+      "name": "save_pet_profile",
+      "method": "POST",
+      "path": "/pets",
+      "description": "Save or update pet profile details, preferences, inventory notes, and service history"
+    },
+    {
+      "name": "create_booking",
+      "method": "POST",
+      "path": "/bookings",
+      "description": "Create a grooming booking with idempotency support",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "modify_booking",
+      "method": "PATCH",
+      "path": "/bookings/{bookingId}",
+      "description": "Modify an existing booking (time, service, store)"
+    },
+    {
+      "name": "cancel_booking",
+      "method": "DELETE",
+      "path": "/bookings/{bookingId}",
+      "description": "Cancel a grooming booking",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "create_order",
+      "method": "POST",
+      "path": "/orders",
+      "description": "Create a product order with idempotency support",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "modify_order",
+      "method": "PATCH",
+      "path": "/orders/{orderId}",
+      "description": "Modify an existing order"
+    },
+    {
+      "name": "cancel_order",
+      "method": "DELETE",
+      "path": "/orders/{orderId}",
+      "description": "Cancel a product order",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "get_status",
+      "method": "GET",
+      "path": "/status/{entityType}/{entityId}",
+      "description": "Get booking or order status"
+    }
+  ]
+}

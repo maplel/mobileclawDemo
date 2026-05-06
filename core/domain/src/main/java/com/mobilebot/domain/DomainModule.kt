@@ -14,6 +14,8 @@ import com.mobilebot.domain.tools.OpenSettingsTool
 import com.mobilebot.domain.tools.OpenUrlTool
 import com.mobilebot.domain.tools.ReadSandboxFileTool
 import com.mobilebot.domain.tools.ReadUserProfileTool
+import com.mobilebot.domain.tools.RecallFactsTool
+import com.mobilebot.domain.tools.RememberFactTool
 import com.mobilebot.domain.tools.SearchContactsTool
 import com.mobilebot.domain.tools.SendSmsTool
 import com.mobilebot.domain.tools.SetAlarmTool
@@ -103,6 +105,14 @@ abstract class DomainToolModule {
     @Binds
     @IntoSet
     abstract fun bindReadUserProfile(tool: ReadUserProfileTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindRecallFacts(tool: RecallFactsTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindRememberFact(tool: RememberFactTool): Tool
 
     @Binds
     @IntoSet

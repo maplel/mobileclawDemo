@@ -14,6 +14,7 @@ class ChatViewModel @Inject constructor(
 ) : ViewModel() {
 
     val currentChatId: StateFlow<String> = stateManager.currentChatId
+    val sessionsList: StateFlow<List<ChatSessionUi>> = stateManager.sessionsList
     val lines: StateFlow<List<ChatLine>> = stateManager.lines
     val busy: StateFlow<Boolean> = stateManager.busy
     val runtimeState: StateFlow<String> = stateManager.runtimeState
@@ -21,6 +22,18 @@ class ChatViewModel @Inject constructor(
 
     fun send(text: String) {
         stateManager.send(text)
+    }
+
+    fun startNewChat() {
+        stateManager.startNewChat()
+    }
+
+    fun switchChat(chatId: String) {
+        stateManager.switchChat(chatId)
+    }
+
+    fun refreshChatSessions() {
+        stateManager.refreshChatSessions()
     }
 
     fun onActionSelected(prompt: ChatLine.ActionPrompt, action: ActionButton) {
