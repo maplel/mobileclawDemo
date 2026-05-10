@@ -795,11 +795,16 @@ class AgentExperienceViewModel
                 !text.contains("home confirmation pending") &&
                 !text.contains("到家确认待") &&
                 !text.contains("等待司机确认") &&
-                (text.contains("all steps complete") ||
-                text.contains("paid and accounted") ||
-                text.contains("payment completed") ||
-                text.contains("全流程完成") ||
-                text.contains("已支付")) &&
+                (
+                    text.contains("all steps complete") ||
+                        text.contains("paid and accounted") ||
+                        text.contains("payment completed") ||
+                        text.contains("closed loop") ||
+                        text.contains("流程闭环") ||
+                        text.contains("全流程完成") ||
+                        (text.contains("支付") && (text.contains("记账") || text.contains("账务")))
+                ) &&
+                (text.contains("到家") || text.contains("home")) &&
                 (text.contains("kylin") || text.contains("麒麟")) &&
                 (text.contains("petsmart") || text.contains("pet smart"))
 
@@ -812,12 +817,18 @@ class AgentExperienceViewModel
         }
 
         private fun compactGroomingCompletionText(text: String): String {
-            val amount = Regex("""(?:¥|￥)\s?\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:yuan|rmb|cny|元)""", RegexOption.IGNORE_CASE)
+            val amount = Regex("""(?:¥|￥)\s?\d+(?:\.\d+)?|(?:cny|rmb|yuan)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:yuan|rmb|cny|元)""", RegexOption.IGNORE_CASE)
                 .find(text)
                 ?.value
                 ?.replace(Regex("""\s+"""), "")
+                ?.let(::normalizeAmountText)
             val feeText = amount?.let { "洗护费用 $it" } ?: "洗护费用"
             return "麒麟已到家，$feeText 已支付并完成记账。"
+        }
+
+        private fun normalizeAmountText(value: String): String {
+            val number = Regex("""\d+(?:\.\d+)?""").find(value)?.value ?: return value
+            return "${number}元"
         }
 
         private fun containsChinese(text: String): Boolean =
