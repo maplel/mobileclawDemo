@@ -42,6 +42,7 @@ class AgentExperienceViewModel
         private var scenarioClock = INITIAL_SCENARIO_CLOCK
         private var deferredRetriggerInProgress = false
         private var latestScenarioDecisionIntent: ScenarioDecisionIntent? = null
+        private var pendingSelectedActionLabel: String? = null
         private val groomingMilestones = mutableSetOf<GroomingMilestone>()
 
         private val scenario = AgentScenarioConfig(
@@ -103,6 +104,7 @@ class AgentExperienceViewModel
             eventCounter = 0
             continuationCount = 0
             latestScenarioDecisionIntent = null
+            pendingSelectedActionLabel = null
             groomingMilestones.clear()
             val triggerText = buildScenarioTriggerText(scenarioClock)
             val baseFrame = AgentExperienceFrame.initial(scenario).withClock(scenarioClock)
@@ -179,6 +181,10 @@ class AgentExperienceViewModel
             selectedActionValue: String?,
         ) {
             val prompt = _frame.value.decisionPrompt
+            val delayUserBubble = selectedActionValue != null
+            if (delayUserBubble) {
+                pendingSelectedActionLabel = displayText
+            }
             continuationCount = 0
             _frame.update {
                 it.copy(
@@ -186,11 +192,15 @@ class AgentExperienceViewModel
                     busy = true,
                     decisionPrompt = if (selectedActionValue == null) null else it.decisionPrompt,
                     activeActionValue = selectedActionValue,
-                    conversationItems = appendConversation(
-                        it.conversationItems,
-                        AgentConversationRole.USER,
-                        displayText,
-                    ),
+                    conversationItems = if (delayUserBubble) {
+                        it.conversationItems
+                    } else {
+                        appendConversation(
+                            it.conversationItems,
+                            AgentConversationRole.USER,
+                            displayText,
+                        )
+                    },
                     progressLine = AgentProgressLine(
                         label = "Understanding",
                         detail = displayText,
@@ -238,7 +248,7 @@ class AgentExperienceViewModel
             try {
                 if (settings.getApiKey().isBlank()) {
                     _frame.update {
-                        it.copy(
+                        it.withPendingSelectedAction().copy(
                             busy = false,
                             statusLabel = "Needs API key",
                             decisionPrompt = null,
@@ -261,7 +271,7 @@ class AgentExperienceViewModel
             } catch (e: Throwable) {
                 Log.e(TAG, "Agent experience failed", e)
                 _frame.update {
-                    it.copy(
+                    it.withPendingSelectedAction().copy(
                         busy = false,
                         statusLabel = "Error",
                         decisionPrompt = null,
@@ -287,7 +297,7 @@ class AgentExperienceViewModel
                 if (continuationPrompt != null) {
                     if (continuationCount >= MAX_AUTO_CONTINUATIONS) {
                         _frame.update {
-                            it.copy(
+                            it.withPendingSelectedAction().copy(
                                 busy = false,
                                 statusLabel = "Needs attention",
                                 finalSummary = null,
@@ -407,6 +417,7 @@ class AgentExperienceViewModel
                 advanceClockTo(nextClock)
                 scenarioClock = nextClock
                 latestScenarioDecisionIntent = null
+                pendingSelectedActionLabel = null
                 groomingMilestones.clear()
                 _frame.value = AgentExperienceFrame.initial(scenario).withClock(scenarioClock)
                 deferredRetriggerInProgress = false
@@ -526,12 +537,13 @@ class AgentExperienceViewModel
                         if (displayText == null) {
                             base
                         } else {
-                            base.copy(
+                            val visibleBase = base.withPendingSelectedAction()
+                            visibleBase.copy(
                                 statusLabel = "Running",
                                 decisionPrompt = null,
                                 activeActionValue = null,
                                 conversationItems = appendConversation(
-                                    base.conversationItems,
+                                    visibleBase.conversationItems,
                                     AgentConversationRole.AGENT,
                                     displayText,
                                 ),
@@ -548,12 +560,13 @@ class AgentExperienceViewModel
                     "action_prompt" -> {
                         val actions = parseActionButtons(metadata["_actions"], content)
                         val displayText = compactDecisionPromptText(content)
-                        base.copy(
+                        val visibleBase = base.withPendingSelectedAction()
+                        visibleBase.copy(
                             statusLabel = "Waiting for decision",
                             decisionPrompt = DecisionPrompt(displayText, actions),
                             activeActionValue = null,
                             conversationItems = appendConversation(
-                                base.conversationItems,
+                                visibleBase.conversationItems,
                                 AgentConversationRole.AGENT,
                                 displayText,
                             ),
@@ -572,7 +585,7 @@ class AgentExperienceViewModel
                         )
                     }
                     "error" ->
-                        base.copy(
+                        base.withPendingSelectedAction().copy(
                             statusLabel = "Error",
                             error = content,
                             decisionPrompt = null,
@@ -594,7 +607,7 @@ class AgentExperienceViewModel
                         if (content.isBlank()) {
                             base
                         } else if (content.startsWith(TOOL_ROUND_LIMIT_PREFIX)) {
-                            base.copy(
+                            base.withPendingSelectedAction().copy(
                                 statusLabel = "Failed",
                                 error = content,
                                 finalSummary = null,
@@ -616,13 +629,14 @@ class AgentExperienceViewModel
                         } else {
                             val decisionPrompt = inferDecisionPrompt(content)
                             if (decisionPrompt != null) {
-                                base.copy(
+                                val visibleBase = base.withPendingSelectedAction()
+                                visibleBase.copy(
                                     statusLabel = "Waiting for decision",
                                     decisionPrompt = decisionPrompt,
                                     activeActionValue = null,
                                     finalSummary = null,
                                     conversationItems = appendConversation(
-                                        base.conversationItems,
+                                        visibleBase.conversationItems,
                                         AgentConversationRole.AGENT,
                                         decisionPrompt.text,
                                     ),
@@ -643,17 +657,18 @@ class AgentExperienceViewModel
                                 val displayText = compactFinalSummary(content)
                                 val silentProgress =
                                     scenario.scenarioId == "pet-grooming" &&
-                                        displayText == null &&
-                                        isTransientGroomingNarration(content)
-                                base.copy(
+                                    displayText == null &&
+                                    isTransientGroomingNarration(content)
+                                val visibleBase = base.withPendingSelectedAction()
+                                visibleBase.copy(
                                     finalSummary = content,
                                     decisionPrompt = null,
                                     activeActionValue = null,
                                     conversationItems = if (displayText == null) {
-                                        base.conversationItems
+                                        visibleBase.conversationItems
                                     } else {
                                         appendConversation(
-                                            base.conversationItems,
+                                            visibleBase.conversationItems,
                                             AgentConversationRole.AGENT,
                                             displayText,
                                         )
@@ -1380,6 +1395,18 @@ class AgentExperienceViewModel
         ): List<AgentConversationItem> {
             if (text.isBlank()) return existing
             return (existing + AgentConversationItem(nextId("conversation"), role, text)).takeLast(MAX_CONVERSATION_ITEMS)
+        }
+
+        private fun AgentExperienceFrame.withPendingSelectedAction(): AgentExperienceFrame {
+            val label = pendingSelectedActionLabel?.takeIf { it.isNotBlank() } ?: return this
+            pendingSelectedActionLabel = null
+            return copy(
+                conversationItems = appendConversation(
+                    conversationItems,
+                    AgentConversationRole.USER,
+                    label,
+                ),
+            )
         }
 
         private fun appendTaskLog(
