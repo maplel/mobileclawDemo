@@ -90,6 +90,12 @@ class AgentExperienceViewModel
                     startScenario(showUserBubble = false)
                 }
             }
+            viewModelScope.launch {
+                while (true) {
+                    delay(SCENARIO_CLOCK_TICK_MS)
+                    tickScenarioClock()
+                }
+            }
         }
 
         fun startScenario() {
@@ -126,7 +132,7 @@ class AgentExperienceViewModel
                 taskLogs = listOf(
                     AgentTaskLog(
                         id = nextId("task"),
-                        timeText = blueprintTimeText(INITIAL_SCENARIO_CLOCK),
+                        timeText = blueprintTimeText(scenarioClock),
                         text = "创建麒麟日常洗护任务。",
                     ),
                 ),
@@ -1057,8 +1063,7 @@ class AgentExperienceViewModel
             content: String,
             eventIndex: Int,
         ): String =
-            scenarioClockForToolResult(tool.orEmpty(), content)?.let(::blueprintTimeText)
-                ?: blueprintTimeFor(eventIndex)
+            blueprintTimeText(scenarioClock)
 
         private fun blueprintTimeText(clock: LocalDateTime): String =
             clock.format(BLUEPRINT_TIME_FORMATTER)
@@ -1251,8 +1256,13 @@ class AgentExperienceViewModel
             content: String,
         ): AgentExperienceFrame {
             if (scenario.scenarioId != "pet-grooming") return this
-            val clock = scenarioClockForToolResult(tool, content) ?: return this
-            return withClock(clock)
+            return withClock(scenarioClock)
+        }
+
+        private fun tickScenarioClock() {
+            if (deferredRetriggerInProgress) return
+            scenarioClock = scenarioClock.plusMinutes(1)
+            _frame.update { it.withClock(scenarioClock) }
         }
 
         private fun scenarioClockForToolResult(
@@ -1674,6 +1684,7 @@ class AgentExperienceViewModel
             private const val MAX_VISIBLE_ASSISTANT_UPDATE_CHARS = 500
             private const val MAX_AUTO_CONTINUATIONS = 14
             private const val AUTO_TRIGGER_DELAY_MS = 5_000L
+            private const val SCENARIO_CLOCK_TICK_MS = 1_000L
             private const val CLOCK_ADVANCE_STEPS = 30
             private const val CLOCK_ADVANCE_STEP_MS = 1_000L
             private const val TOOL_ROUND_LIMIT_PREFIX = "Stopped: too many tool call rounds"
