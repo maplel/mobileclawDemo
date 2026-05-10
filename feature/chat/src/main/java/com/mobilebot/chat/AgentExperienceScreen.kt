@@ -160,6 +160,12 @@ private fun PhoneFlowCanvas(
                     .padding(horizontal = 28.dp)
                     .padding(top = if (blueprintOpen) 10.dp else 14.dp),
             )
+            TaskProgressStrip(
+                frame = frame,
+                modifier = Modifier
+                    .padding(horizontal = 28.dp)
+                    .padding(top = 4.dp, bottom = 2.dp),
+            )
             InteractionDock(
                 active = frame.decisionPrompt != null && !frame.busy,
                 onOpenChat = onOpenChat,
