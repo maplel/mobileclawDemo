@@ -197,31 +197,49 @@ sealed class ScenarioDecisionIntent(
     data object PetGroomingKeepCurrentWeek : ScenarioDecisionIntent(
         id = "pet_grooming.keep_current_week",
         displayLabel = "好的",
-        meaning = "Lee wants to keep Kylin's regular grooming appointment this week.",
+        meaning = "Y wants to keep Kylin's regular grooming appointment this week.",
     )
 
     data object PetGroomingDeferCurrentWeek : ScenarioDecisionIntent(
         id = "pet_grooming.defer_current_week",
         displayLabel = "改天再说",
-        meaning = "Lee wants to skip or postpone this week's Kylin grooming run.",
+        meaning = "Y wants to skip or postpone this week's Kylin grooming run.",
     )
 
     data object PetGroomingBookNine : ScenarioDecisionIntent(
         id = "pet_grooming.book_0900",
         displayLabel = "约9点",
-        meaning = "Lee chooses the 9:00 PetSmart slot and authorizes routine downstream coordination.",
+        meaning = "Y chooses the 9:00 PetSmart slot and authorizes routine downstream coordination.",
     )
 
     data object PetGroomingAskAfternoon : ScenarioDecisionIntent(
         id = "pet_grooming.ask_afternoon",
         displayLabel = "问下午",
-        meaning = "Lee wants the agent to ask PetSmart about afternoon availability before deciding.",
-    )
+        meaning = "Y wants the agent to ask PetSmart about afternoon availability before deciding.",
+    ) {
+        override fun agentText(rawText: String): String =
+            """
+            $command
+            NEXT_OPERATION: Send PetSmart an SMS asking whether tomorrow after 17:00 can be booked as a bath-only slot for Kylin, then call system_wait_for_sms for PetSmart's reply. Do not repeat the previous options before the new PetSmart SMS is received.
+            """.trimIndent()
+    }
+
+    data object PetGroomingBookAfternoonBathOnly : ScenarioDecisionIntent(
+        id = "pet_grooming.book_afternoon_bath_only",
+        displayLabel = "约下午5点",
+        meaning = "Y accepts the afternoon bath-only PetSmart slot and authorizes routine downstream coordination.",
+    ) {
+        override fun agentText(rawText: String): String =
+            """
+            $command
+            NEXT_OPERATION: Confirm the afternoon bath-only slot with PetSmart, wait for PetSmart's booking confirmation SMS, then coordinate Driver around that selected afternoon slot. Do not ask Y to confirm the same option again.
+            """.trimIndent()
+    }
 
     data object PetGroomingFindAlternative : ScenarioDecisionIntent(
         id = "pet_grooming.find_alternative_shop",
         displayLabel = "换一家",
-        meaning = "Lee wants to look for another grooming shop.",
+        meaning = "Y wants to look for another grooming shop.",
     )
 
     data object ModifyPlan : ScenarioDecisionIntent(
@@ -259,6 +277,7 @@ sealed class ScenarioDecisionIntent(
                     PetGroomingDeferCurrentWeek,
                     PetGroomingBookNine,
                     PetGroomingAskAfternoon,
+                    PetGroomingBookAfternoonBathOnly,
                     PetGroomingFindAlternative,
                     ModifyPlan,
                     RewritePlan,

@@ -1,11 +1,11 @@
 {
   "contacts": [
     {
-      "id": "owner-lee",
-      "displayName": "Lee",
+      "id": "owner-Y",
+      "displayName": "Y",
       "relation": "owner",
       "phone": "13800001111",
-      "aliases": ["Lee", "owner", "user", "me", "我"],
+      "aliases": ["Y", "owner", "user", "me", "我"],
       "channels": ["sms", "phone"],
       "capabilities": ["owner_decision"],
       "messageKeywords": ["owner decision", "user decision"],
@@ -29,12 +29,12 @@
       "displayName": "Driver",
       "relation": "private_driver",
       "phone": "13800002222",
-      "aliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机", "私人司机"],
+      "aliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机", "私人司机"],
       "channels": ["sms", "phone"],
       "capabilities": ["pickup", "dropoff", "private_transport", "household_transport"],
       "messageKeywords": ["driver", "private driver", "pickup", "pick up", "drop off", "downstairs", "home arrival", "司机", "接", "送", "楼下", "到家"],
       "trustLevel": "high",
-      "note": "Lee's private driver for user and household errands, including Kylin pickup and return."
+      "note": "Y's private driver for user and household errands, including Kylin pickup and return."
     },
     {
       "id": "family-contact",
@@ -90,7 +90,7 @@
   ],
   "outboundSmsGuards": [
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "messageKeywords": ["Kylin", "PetSmart", "麒麟", "接", "送", "到店", "美容"],
       "blockedUntil": {
         "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
@@ -109,10 +109,10 @@
       "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
       "messageKeywords": ["CNY", "RMB", "价格", "费用", "合计", "总计", "¥", "￥", "元"],
       "message": "短信暂未发送：价格使用宠物店查询服务返回的公开价格，短信只确认档期、服务内容和预约状态。",
-      "instruction": "重新发送给 PetSmart 的短信，只确认周日9点、小型犬基础洗浴和去浮毛服务，不要包含价格、费用、合计或 CNY。"
+      "instruction": "重新发送给 PetSmart 的短信，只确认周日9点、Kylin 的洗澡和去浮毛服务，不要包含价格、费用、合计或 CNY。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "messageKeywords": ["PetSmart接", "PetSmart 接", "去PetSmart接", "去 PetSmart 接", "接回来", "接回", "完成后再出发接"],
       "blockedUntil": {
         "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
@@ -122,15 +122,15 @@
       "instruction": "Driver 第一段只负责从家接 Kylin 并送到 PetSmart；只有 PetSmart 说明 Kylin 已完成或可接后，才让 Driver 到 PetSmart 接回。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "messageKeywords": ["上午9点，请到", "上午9点，麻烦到", "9点，请到", "9点，麻烦到", "9:00请到", "9:00，请到"],
       "message": "短信暂未发送：Driver 到家接 Kylin 的时间必须早于 PetSmart 上午9点预约。",
       "instruction": "重新发送给 Driver 的短信：8:30 到家接 Kylin，9:00 前送到 PetSmart。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
-      "messageKeywords": ["Lee您好", "Lee 您好", "Lee你好", "Lee 你好"],
-      "message": "短信暂未发送：这条短信是发给 Driver 的，称呼不能写 Lee。",
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["Y您好", "Y 您好", "Y你好", "Y 你好"],
+      "message": "短信暂未发送：这条短信是发给 Driver 的，称呼不能写用户名。",
       "instruction": "重新发送给 Driver 的短信：开头用“司机您好”或“您好”，只说明 8:30 到浦东家中接 Kylin，并于 9:00 前送到 PetSmart。"
     }
   ],
@@ -146,15 +146,15 @@
         "actions": [
           {
             "label": "约9点",
-            "value": "先向PetSmart发送确认短信，确认约明天上午9点洗澡和除毛；收到PetSmart预约已确认后，再安排司机。"
+            "value": "USER_INTENT:pet_grooming.book_0900"
           },
           {
             "label": "问下午",
-            "value": "继续问PetSmart明天下午可用档期；如果只能洗澡不能除毛，再告诉我。"
+            "value": "USER_INTENT:pet_grooming.ask_afternoon"
           },
           {
             "label": "换一家",
-            "value": "PetSmart时间不合适，查找其他宠物店。"
+            "value": "USER_INTENT:pet_grooming.find_alternative_shop"
           }
         ]
       }
@@ -167,9 +167,27 @@
     },
     {
       "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
-      "keywords": ["after 5", "5 pm", "five", "bath only", "下午五", "5点", "只洗澡"],
+      "keywords": ["after 5", "5 pm", "17:00", "five", "bath only", "下午五", "下午5", "5点", "5点后", "5点以后", "只洗澡"],
+      "priority": 80,
       "eventType": "petsmart_afternoon_bath_only",
-      "reply": "好的，那就下午五点，只洗澡。"
+      "reply": "下午五点以后可以约，只能洗澡，不含除毛。",
+      "decisionPrompt": {
+        "prompt": "PetSmart说下午5点后可以，只够洗澡，不含除毛。要改约下午5点吗？",
+        "actions": [
+          {
+            "label": "约下午5点",
+            "value": "USER_INTENT:pet_grooming.book_afternoon_bath_only"
+          },
+          {
+            "label": "约9点",
+            "value": "USER_INTENT:pet_grooming.book_0900"
+          },
+          {
+            "label": "换一家",
+            "value": "USER_INTENT:pet_grooming.find_alternative_shop"
+          }
+        ]
+      }
     },
     {
       "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
@@ -196,39 +214,39 @@
       "reply": "收到，Kylin 的预约信息我们会继续更新。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "keywords": ["home now", "arrived home", "home confirmation", "driver home confirmation", "arrived back home", "到家", "已到家", "到家确认", "送回家"],
       "excludeKeywords": ["到家接", "到家接宠", "到家接kylin", "home pickup"],
       "eventType": "driver_home_arrival",
       "reply": "我到了，Kylin 已经到家了。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "keywords": ["19:20", "7:20", "七点二十", "7点20", "pickup from petsmart", "pick up kylin at petsmart", "去接", "接回来"],
       "eventType": "driver_return_pickup_confirmed",
       "reply": "收到，我{pickup_time}去 PetSmart 接 Kylin。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "keywords": ["delivery-to-petsmart", "delivered", "arrived at", "drop off", "送到", "送达", "已送达", "到店", "抵达"],
       "excludeKeywords": ["8:30", "请到家", "上门接", "接麒麟", "接 Kylin", "接kylin", "到家接"],
       "eventType": "driver_delivered_to_petsmart",
       "reply": "Kylin 送到了。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "keywords": ["pickup", "pick up", "come get", "接", "楼下"],
       "eventType": "driver_home_pickup_confirmed",
       "reply": "收到，我{pickup_time}来接 Kylin，9:00 前送到 PetSmart。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "keywords": ["return", "bring", "on the way", "回家", "送回"],
       "eventType": "driver_return_eta",
       "reply": "Kylin 在回家路上了，预计{first_time}到。"
     },
     {
-      "contactAliases": ["Driver", "Lee's driver", "private driver", "trusted driver", "司机"],
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "keywords": [],
       "eventType": "driver_generic_update",
       "reply": "收到，我会继续更新。"

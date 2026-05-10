@@ -561,7 +561,13 @@ class SystemRuntime
         private fun generateSmsReply(watch: SmsWatch): SmsReply {
             val contact = watch.contact.lowercase()
             val outbound = watch.outboundMessage.trim().lowercase()
-            val rule = smsResponseRules().firstOrNull { it.matches(contact, outbound) }
+            val rule = smsResponseRules()
+                .mapNotNull { rule ->
+                    val score = rule.matchScore(contact, outbound)
+                    if (score > 0) score to rule else null
+                }
+                .maxByOrNull { it.first }
+                ?.second
             return SmsReply(
                 message = rule?.let { renderSmsReply(it, outbound) } ?: "收到，我会继续更新。",
                 decisionPrompt = rule?.decisionPrompt,
@@ -768,23 +774,30 @@ class SystemRuntime
             val contactAliases: List<String>,
             val keywords: List<String>,
             val excludeKeywords: List<String>,
+            val priority: Int,
             val reply: String,
             val decisionPrompt: RuntimeDecisionPrompt?,
             val eventType: String?,
         ) {
-            fun matches(
+            fun matchScore(
                 contact: String,
                 outbound: String,
-            ): Boolean {
+            ): Int {
                 val contactMatches = contactAliases.isEmpty() ||
                     contactAliases.any { alias ->
                         val normalized = alias.trim().lowercase()
                         normalized.isNotBlank() && (contact.contains(normalized) || normalized.contains(contact))
                     }
-                val keywordMatches = keywords.isEmpty() ||
-                    keywords.any { outbound.contains(it.trim().lowercase()) }
+                if (!contactMatches) return 0
+
+                val matchedKeywords = keywords.count {
+                    val keyword = it.trim().lowercase()
+                    keyword.isNotBlank() && outbound.contains(keyword)
+                }
+                val keywordMatches = keywords.isEmpty() || matchedKeywords > 0
                 val excluded = excludeKeywords.any { outbound.contains(it.trim().lowercase()) }
-                return contactMatches && keywordMatches && !excluded
+                if (!keywordMatches || excluded) return 0
+                return priority + if (keywords.isEmpty()) 1 else matchedKeywords * 10
             }
 
         }
@@ -956,6 +969,7 @@ class SystemRuntime
                             contactAliases = obj.optStringList("contactAliases"),
                             keywords = obj.optStringList("keywords"),
                             excludeKeywords = obj.optStringList("excludeKeywords"),
+                            priority = obj.optInt("priority", 0),
                             reply = reply,
                             decisionPrompt = parseDecisionPrompt(obj.optJSONObject("decisionPrompt")),
                             eventType = obj.optString("eventType").trim().takeIf { it.isNotBlank() },
