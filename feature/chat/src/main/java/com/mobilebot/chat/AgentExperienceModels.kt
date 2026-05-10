@@ -86,6 +86,7 @@ data class AgentExperienceFrame(
     val timeline: List<AgentTimelineEvent> = emptyList(),
     val stageCards: List<AgentStageCard> = emptyList(),
     val decisionPrompt: DecisionPrompt? = null,
+    val activeActionValue: String? = null,
     val finalSummary: String? = null,
     val debugTrace: List<String> = emptyList(),
     val error: String? = null,

@@ -25,6 +25,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
@@ -53,9 +58,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -322,7 +331,7 @@ private fun SessionArea(
     modifier: Modifier = Modifier,
 ) {
     val messages = frame.conversationItems
-    val actions = remember(frame.decisionPrompt, frame.hasStarted, frame.busy, frame.finalSummary, frame.error) {
+    val actions = remember(frame.decisionPrompt, frame.hasStarted, frame.finalSummary, frame.error) {
         conversationActions(frame)
     }
     val activeDecision = frame.decisionPrompt != null
@@ -357,6 +366,7 @@ private fun SessionArea(
             item {
                 ConversationActionRow(
                     actions = actions,
+                    activeActionValue = frame.activeActionValue,
                     enabled = !frame.busy,
                     onAction = { action ->
                         if (activeDecision) onAction(action) else onStart()
@@ -370,6 +380,7 @@ private fun SessionArea(
 @Composable
 private fun ConversationActionRow(
     actions: List<ActionButton>,
+    activeActionValue: String?,
     enabled: Boolean,
     onAction: (ActionButton) -> Unit,
 ) {
@@ -380,9 +391,10 @@ private fun ConversationActionRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        items(actions) { action ->
+        items(actions, key = { it.value }) { action ->
             ActionOptionBubble(
                 label = action.label,
+                selected = action.value == activeActionValue,
                 enabled = enabled,
                 onClick = { onAction(action) },
             )
@@ -393,17 +405,32 @@ private fun ConversationActionRow(
 @Composable
 private fun ActionOptionBubble(
     label: String,
+    selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "action_loading")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = LinearEasing),
+        ),
+        label = "action_loading_phase",
+    )
     Surface(
         onClick = onClick,
         modifier = Modifier
             .height(67.dp)
-            .widthIn(max = 180.dp),
+            .widthIn(max = 180.dp)
+            .loadingActionBorder(selected = selected, phase = phase),
         enabled = enabled,
-        color = if (enabled) AgentPanel else AgentPanel.copy(alpha = 0.42f),
-        contentColor = if (enabled) AgentWhite else AgentMuted,
+        color = when {
+            selected -> AgentPanelActive
+            enabled -> AgentPanel
+            else -> AgentPanel.copy(alpha = 0.58f)
+        },
+        contentColor = if (enabled || selected) AgentWhite else AgentMuted,
         shape = RoundedCornerShape(24.dp),
     ) {
         Box(
@@ -421,6 +448,42 @@ private fun ActionOptionBubble(
         }
     }
 }
+
+private fun Modifier.loadingActionBorder(
+    selected: Boolean,
+    phase: Float,
+): Modifier =
+    if (!selected) {
+        this
+    } else {
+        drawWithContent {
+            drawContent()
+            val strokeWidth = 2.dp.toPx()
+            val radius = 24.dp.toPx()
+            val width = size.width
+            val height = size.height
+            drawRoundRect(
+                color = AgentWhite.copy(alpha = 0.42f),
+                topLeft = Offset.Zero,
+                size = size,
+                cornerRadius = CornerRadius(radius, radius),
+                style = Stroke(width = strokeWidth),
+            )
+            val perimeter = ((width + height) * 2f).coerceAtLeast(1f)
+            val distance = perimeter * phase
+            val center = when {
+                distance <= width -> Offset(distance, 0f)
+                distance <= width + height -> Offset(width, distance - width)
+                distance <= width * 2f + height -> Offset(width - (distance - width - height), height)
+                else -> Offset(0f, height - (distance - width * 2f - height))
+            }
+            drawCircle(
+                color = AgentWhite,
+                radius = 4.5.dp.toPx(),
+                center = center,
+            )
+        }
+    }
 @Composable
 private fun TaskProgressStrip(
     frame: AgentExperienceFrame,
@@ -833,6 +896,7 @@ private fun conversationActions(frame: AgentExperienceFrame): List<ActionButton>
 
 private val AgentBlack = Color(0xFF050505)
 private val AgentPanel = Color(0xFF1A1A1A)
+private val AgentPanelActive = Color(0xFF2A2A2A)
 private val BlueprintGray = Color(0xFF545454)
 private val AgentMuted = Color(0xFFA8A8A8)
 private val AgentWhite = Color.White

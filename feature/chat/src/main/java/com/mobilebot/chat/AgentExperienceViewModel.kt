@@ -155,6 +155,7 @@ class AgentExperienceViewModel
                 chatId = chatId,
                 displayText = action.label,
                 rawText = action.value,
+                selectedActionValue = action.value,
             )
         }
 
@@ -167,6 +168,7 @@ class AgentExperienceViewModel
                 chatId = chatId,
                 displayText = value,
                 rawText = value,
+                selectedActionValue = null,
             )
         }
 
@@ -174,6 +176,7 @@ class AgentExperienceViewModel
             chatId: String,
             displayText: String,
             rawText: String,
+            selectedActionValue: String?,
         ) {
             val prompt = _frame.value.decisionPrompt
             continuationCount = 0
@@ -181,7 +184,8 @@ class AgentExperienceViewModel
                 it.copy(
                     statusLabel = "Understanding",
                     busy = true,
-                    decisionPrompt = null,
+                    decisionPrompt = if (selectedActionValue == null) null else it.decisionPrompt,
+                    activeActionValue = selectedActionValue,
                     conversationItems = appendConversation(
                         it.conversationItems,
                         AgentConversationRole.USER,
@@ -237,6 +241,8 @@ class AgentExperienceViewModel
                         it.copy(
                             busy = false,
                             statusLabel = "Needs API key",
+                            decisionPrompt = null,
+                            activeActionValue = null,
                             progressLine = AgentProgressLine(
                                 label = "Needs API key",
                                 detail = "Configure the provider key in Settings before running.",
@@ -258,6 +264,8 @@ class AgentExperienceViewModel
                     it.copy(
                         busy = false,
                         statusLabel = "Error",
+                        decisionPrompt = null,
+                        activeActionValue = null,
                         progressLine = AgentProgressLine(
                             label = "Needs attention",
                             detail = "The provider response could not be completed.",
@@ -284,6 +292,8 @@ class AgentExperienceViewModel
                                 statusLabel = "Needs attention",
                                 finalSummary = null,
                                 error = "The grooming workflow stopped before closure.",
+                                decisionPrompt = null,
+                                activeActionValue = null,
                                 progressLine = AgentProgressLine(
                                     label = "Needs attention",
                                     detail = "The workflow needs manual review before continuing.",
@@ -326,7 +336,7 @@ class AgentExperienceViewModel
                 }
                 _frame.update {
                     if (it.decisionPrompt != null) {
-                        it.copy(busy = false, statusLabel = "Waiting for decision")
+                        it.copy(busy = false, statusLabel = "Waiting for decision", activeActionValue = null)
                     } else if (it.error != null) {
                         it.copy(busy = false)
                     } else {
@@ -518,6 +528,8 @@ class AgentExperienceViewModel
                         } else {
                             base.copy(
                                 statusLabel = "Running",
+                                decisionPrompt = null,
+                                activeActionValue = null,
                                 conversationItems = appendConversation(
                                     base.conversationItems,
                                     AgentConversationRole.AGENT,
@@ -539,6 +551,7 @@ class AgentExperienceViewModel
                         base.copy(
                             statusLabel = "Waiting for decision",
                             decisionPrompt = DecisionPrompt(displayText, actions),
+                            activeActionValue = null,
                             conversationItems = appendConversation(
                                 base.conversationItems,
                                 AgentConversationRole.AGENT,
@@ -562,6 +575,8 @@ class AgentExperienceViewModel
                         base.copy(
                             statusLabel = "Error",
                             error = content,
+                            decisionPrompt = null,
+                            activeActionValue = null,
                             progressLine = AgentProgressLine(
                                 label = "Needs attention",
                                 detail = "The provider response could not be completed.",
@@ -583,6 +598,8 @@ class AgentExperienceViewModel
                                 statusLabel = "Failed",
                                 error = content,
                                 finalSummary = null,
+                                decisionPrompt = null,
+                                activeActionValue = null,
                                 progressLine = AgentProgressLine(
                                     label = "Needs attention",
                                     detail = "The run stopped after too many internal action rounds.",
@@ -602,6 +619,7 @@ class AgentExperienceViewModel
                                 base.copy(
                                     statusLabel = "Waiting for decision",
                                     decisionPrompt = decisionPrompt,
+                                    activeActionValue = null,
                                     finalSummary = null,
                                     conversationItems = appendConversation(
                                         base.conversationItems,
@@ -629,6 +647,8 @@ class AgentExperienceViewModel
                                         isTransientGroomingNarration(content)
                                 base.copy(
                                     finalSummary = content,
+                                    decisionPrompt = null,
+                                    activeActionValue = null,
                                     conversationItems = if (displayText == null) {
                                         base.conversationItems
                                     } else {
