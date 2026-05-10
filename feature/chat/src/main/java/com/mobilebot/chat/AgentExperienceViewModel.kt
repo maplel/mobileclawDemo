@@ -126,7 +126,7 @@ class AgentExperienceViewModel
                 taskLogs = listOf(
                     AgentTaskLog(
                         id = nextId("task"),
-                        timeText = blueprintTimeFor(0),
+                        timeText = blueprintTimeText(INITIAL_SCENARIO_CLOCK),
                         text = "Creating Kylin daily care task.",
                     ),
                 ),
@@ -958,12 +958,13 @@ class AgentExperienceViewModel
             if (!ok) {
                 return AgentTaskLog(
                     id = nextId("task"),
-                    timeText = blueprintTimeFor(eventIndex),
+                    timeText = taskLogTimeFor(tool, content, eventIndex),
                     text = "Action needs attention: ${content.substringBefore('\n').take(140)}",
                 )
             }
             return when (tool) {
                 "device_system", "system_search_contacts", "system_send_sms", "system_wait_for_sms" -> deviceTaskLog(
+                    tool = tool,
                     content = content,
                     eventIndex = eventIndex,
                 )
@@ -972,6 +973,7 @@ class AgentExperienceViewModel
         }
 
         private fun deviceTaskLog(
+            tool: String,
             content: String,
             eventIndex: Int,
         ): AgentTaskLog? {
@@ -1029,10 +1031,21 @@ class AgentExperienceViewModel
             }
             return AgentTaskLog(
                 id = nextId("task"),
-                timeText = blueprintTimeFor(eventIndex),
+                timeText = taskLogTimeFor(tool, content, eventIndex),
                 text = text,
             )
         }
+
+        private fun taskLogTimeFor(
+            tool: String?,
+            content: String,
+            eventIndex: Int,
+        ): String =
+            scenarioClockForToolResult(tool.orEmpty(), content)?.let(::blueprintTimeText)
+                ?: blueprintTimeFor(eventIndex)
+
+        private fun blueprintTimeText(clock: LocalDateTime): String =
+            clock.format(BLUEPRINT_TIME_FORMATTER)
 
         private fun blueprintTimeFor(eventIndex: Int): String =
             BLUEPRINT_TIMES.getOrElse(eventIndex) {
@@ -1454,6 +1467,7 @@ class AgentExperienceViewModel
             private val INITIAL_SCENARIO_CLOCK: LocalDateTime = LocalDateTime.of(2027, 4, 25, 13, 0)
             private val CLOCK_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
             private val CLOCK_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd/yyyy", Locale.US)
+            private val BLUEPRINT_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd HH:mm", Locale.US)
             private val SCENARIO_DAY_NAMES = listOf(
                 "Saturday" to "Sat",
                 "Sunday" to "Sun",
