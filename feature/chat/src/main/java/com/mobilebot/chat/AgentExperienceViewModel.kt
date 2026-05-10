@@ -519,10 +519,12 @@ class AgentExperienceViewModel
                             else base.systemSignals
                         val taskLog = taskLogFromToolResult(tool, content, ok, base.taskLogs.size)
                         val partyLogs = partyTaskLogsFromToolResult(tool, content, ok, base.taskLogs)
+                        val logsToAppend = partyLogs + listOfNotNull(taskLog)
                         val notification = if (systemTool && ok) notificationFromDeviceResult(content) else null
                         base.copy(
                             systemSignals = signals,
-                            taskLogs = appendTaskLogs(base.taskLogs, partyLogs + listOfNotNull(taskLog)),
+                            taskLogs = appendTaskLogs(base.taskLogs, logsToAppend),
+                            participants = updateParticipantsFromTaskLogs(base.participants, logsToAppend),
                             systemNotification = notification ?: base.systemNotification,
                             progressLine = AgentProgressLine(
                                 label = if (ok) "Updated" else "Needs attention",
@@ -1071,10 +1073,10 @@ class AgentExperienceViewModel
             val serviceId = data?.optString("serviceId").orEmpty()
             val action = data?.optString("action").orEmpty()
             return when {
-                serviceId == "pet_salon_search" && action.contains("detail", ignoreCase = true) ->
-                    "查询 PetSmart 联系方式、服务项目和公开价格。"
-                serviceId == "pet_salon_search" ->
-                    "查询 PetSmart 服务信息。"
+                serviceId == "pet_salon_search" -> {
+                    val shopName = firstNamedEntity(data).ifBlank { "PetSmart" }
+                    "添加 $shopName 到参与方。"
+                }
                 serviceId.isNotBlank() ->
                     "获取 $serviceId 服务信息。"
                 else ->
@@ -1092,6 +1094,113 @@ class AgentExperienceViewModel
                     if (name.isNotBlank()) add(name)
                 }
             }.distinct().joinToString("、")
+        }
+
+        private fun firstNamedEntity(value: Any?): String =
+            when (value) {
+                is JSONObject -> {
+                    value.optString("displayName")
+                        .ifBlank { value.optString("name") }
+                        .ifBlank {
+                            value.keys().asSequence()
+                                .mapNotNull { key -> firstNamedEntity(value.opt(key)).takeIf { it.isNotBlank() } }
+                                .firstOrNull()
+                                .orEmpty()
+                        }
+                }
+                is org.json.JSONArray -> {
+                    (0 until value.length())
+                        .asSequence()
+                        .mapNotNull { index -> firstNamedEntity(value.opt(index)).takeIf { it.isNotBlank() } }
+                        .firstOrNull()
+                        .orEmpty()
+                }
+                else -> ""
+            }
+
+        private fun updateParticipantsFromTaskLogs(
+            existing: List<AgentParticipant>,
+            logs: List<AgentTaskLog>,
+        ): List<AgentParticipant> =
+            logs.fold(existing) { current, log ->
+                val added = participantNamesFromAddLog(log.text)
+                if (added.isEmpty()) {
+                    val removed = participantNamesFromRemoveLog(log.text)
+                    if (removed.isEmpty()) current else removeParticipants(current, removed)
+                } else {
+                    added.fold(current) { parties, name ->
+                        upsertParticipant(parties, participantFromName(name))
+                    }
+                }
+            }
+
+        private fun participantNamesFromAddLog(text: String): List<String> {
+            val match = Regex("""添加\s+(.+?)\s+到参与方""").find(text) ?: return emptyList()
+            return splitParticipantNames(match.groupValues[1])
+        }
+
+        private fun participantNamesFromRemoveLog(text: String): List<String> {
+            val direct = Regex("""(?:移除|踢出)\s+(.+?)\s+(?:出|从)?参与方""").find(text)
+            val reverse = Regex("""从参与方(?:移除|踢出)\s+(.+?)(?:。|$)""").find(text)
+            return splitParticipantNames(direct?.groupValues?.getOrNull(1) ?: reverse?.groupValues?.getOrNull(1).orEmpty())
+        }
+
+        private fun splitParticipantNames(raw: String): List<String> =
+            raw
+                .replace(" and ", "、", ignoreCase = true)
+                .replace(",", "、")
+                .split("、")
+                .map { it.trim().trimEnd('。', '.', ';', '；') }
+                .filter { it.isNotBlank() && !it.equals("Lee", ignoreCase = true) && it != "Y" }
+
+        private fun upsertParticipant(
+            existing: List<AgentParticipant>,
+            participant: AgentParticipant,
+        ): List<AgentParticipant> {
+            val withoutSameRole =
+                if (participant.role == "grooming_service") {
+                    existing.filterNot { it.role == participant.role }
+                } else {
+                    existing
+                }
+            val withoutSameId = withoutSameRole.filterNot { it.id == participant.id }
+            return (withoutSameId + participant).takeLast(MAX_PARTICIPANTS)
+        }
+
+        private fun removeParticipants(
+            existing: List<AgentParticipant>,
+            names: List<String>,
+        ): List<AgentParticipant> {
+            val ids = names.map { participantFromName(it).id }.toSet()
+            return existing.filterNot { it.id in ids || it.displayName in names }
+        }
+
+        private fun participantFromName(name: String): AgentParticipant {
+            val trimmed = name.trim()
+            val lower = trimmed.lowercase()
+            val role = when {
+                lower.contains("driver") || trimmed.contains("司机") -> "private_driver"
+                lower.contains("pet") || lower.contains("salon") || trimmed.contains("宠物") || trimmed.contains("洗护") -> "grooming_service"
+                else -> "service"
+            }
+            return AgentParticipant(
+                id = "$role-${trimmed.lowercase().replace(Regex("""\s+"""), "-")}",
+                label = participantLabel(trimmed),
+                displayName = trimmed,
+                role = role,
+            )
+        }
+
+        private fun participantLabel(name: String): String {
+            val lower = name.lowercase()
+            return when {
+                lower.contains("driver") || name.contains("司机") -> "D"
+                lower.contains("petsmart") -> "PS"
+                else -> {
+                    val letters = name.filter { it.isLetterOrDigit() }
+                    if (letters.isBlank()) name.take(1) else letters.take(2).uppercase()
+                }
+            }
         }
 
         private fun partyTaskLogsFromToolResult(
@@ -1559,6 +1668,7 @@ class AgentExperienceViewModel
             private const val TAG = "AgentExperienceViewModel"
             private const val MAX_TRACE_LINES = 80
             private const val MAX_SIGNALS = 12
+            private const val MAX_PARTICIPANTS = 5
             private const val MAX_CONVERSATION_ITEMS = 40
             private const val MAX_TASK_LOGS = 80
             private const val MAX_VISIBLE_ASSISTANT_UPDATE_CHARS = 500

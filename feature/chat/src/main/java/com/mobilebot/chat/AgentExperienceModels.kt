@@ -40,6 +40,13 @@ data class AgentTaskLog(
     val text: String,
 )
 
+data class AgentParticipant(
+    val id: String,
+    val label: String,
+    val displayName: String,
+    val role: String,
+)
+
 data class AgentSystemNotification(
     val id: String,
     val title: String,
@@ -77,6 +84,7 @@ data class AgentExperienceFrame(
     val hasStarted: Boolean = false,
     val conversationItems: List<AgentConversationItem> = emptyList(),
     val taskLogs: List<AgentTaskLog> = emptyList(),
+    val participants: List<AgentParticipant> = emptyList(),
     val systemNotification: AgentSystemNotification? = null,
     val progressLine: AgentProgressLine = AgentProgressLine(
         label = statusLabel,
