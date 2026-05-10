@@ -63,10 +63,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -473,24 +474,31 @@ private fun Modifier.loadingActionBorder(
             val radius = 24.dp.toPx()
             val blue = Color(0xFF68C8FF)
             val paleBlue = Color(0xFFAADFFF)
+            val borderInset = 1.8.dp.toPx()
+            val borderRadius = (radius - borderInset).coerceAtLeast(0f)
+            val borderSize = Size(
+                width = (size.width - borderInset * 2f).coerceAtLeast(0f),
+                height = (size.height - borderInset * 2f).coerceAtLeast(0f),
+            )
             drawRoundRect(
                 color = blue.copy(alpha = 0.08f),
-                topLeft = Offset.Zero,
-                size = size,
-                cornerRadius = CornerRadius(radius, radius),
+                topLeft = Offset(borderInset, borderInset),
+                size = borderSize,
+                cornerRadius = CornerRadius(borderRadius, borderRadius),
                 style = Stroke(width = 2.4.dp.toPx()),
             )
             drawRoundRect(
                 color = paleBlue.copy(alpha = 0.48f),
-                topLeft = Offset.Zero,
-                size = size,
-                cornerRadius = CornerRadius(radius, radius),
+                topLeft = Offset(borderInset, borderInset),
+                size = borderSize,
+                cornerRadius = CornerRadius(borderRadius, borderRadius),
                 style = Stroke(width = strokeWidth),
             )
             drawOrbitingBorderLight(
                 phase = phase,
                 cornerRadius = radius,
                 strokeWidth = strokeWidth,
+                borderInset = borderInset,
                 color = blue,
                 highlight = AgentWhite,
             )
@@ -501,10 +509,11 @@ private fun DrawScope.drawOrbitingBorderLight(
     phase: Float,
     cornerRadius: Float,
     strokeWidth: Float,
+    borderInset: Float,
     color: Color,
     highlight: Color,
 ) {
-    val inset = strokeWidth / 2f
+    val inset = borderInset + strokeWidth * 1.65f
     val perimeter = roundedRectPerimeter(
         width = size.width,
         height = size.height,
@@ -592,7 +601,7 @@ private fun roundedRectPerimeter(
     val top = inset
     val right = width - inset
     val bottom = height - inset
-    val r = radius
+    val r = (radius - inset)
         .coerceAtMost((right - left) / 2f)
         .coerceAtMost((bottom - top) / 2f)
         .coerceAtLeast(0f)
@@ -612,7 +621,7 @@ private fun roundedRectPointAt(
     val top = inset
     val right = width - inset
     val bottom = height - inset
-    val r = radius
+    val r = (radius - inset)
         .coerceAtMost((right - left) / 2f)
         .coerceAtMost((bottom - top) / 2f)
         .coerceAtLeast(0f)
