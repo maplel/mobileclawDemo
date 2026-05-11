@@ -1396,7 +1396,7 @@ class AgentExperienceViewModel
         }
 
         private fun displayReminderBody(raw: String): String {
-            if (!raw.contains("Kylin") || !raw.contains("PetSmart")) return raw
+            if (!raw.contains("PetSmart")) return raw
             if (!raw.contains("司机") && !raw.contains("Driver")) return raw
 
             val normalized = raw
@@ -1410,7 +1410,8 @@ class AgentExperienceViewModel
                 normalized.contains("8:30") ||
                     normalized.contains("08:30") ||
                     normalized.contains("9:00") ||
-                    normalized.contains("09:00") ->
+                    normalized.contains("09:00") ||
+                    normalized.contains("9点") ->
                     "08:30 Driver 到家接 Kylin，09:00前送达 PetSmart。"
                 else -> normalized
             }
