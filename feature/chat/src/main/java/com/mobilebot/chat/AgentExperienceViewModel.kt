@@ -13,6 +13,7 @@ import com.mobilebot.systemruntime.CallEndedEvent
 import com.mobilebot.systemruntime.IncomingCallEvent
 import com.mobilebot.systemruntime.IncomingSmsEvent
 import com.mobilebot.systemruntime.ReminderFiredEvent
+import com.mobilebot.systemruntime.RuntimeNotificationEvent
 import com.mobilebot.systemruntime.SystemRuntime
 import com.mobilebot.systemruntime.SystemRuntimeEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -62,6 +63,7 @@ class AgentExperienceViewModel
         private val taskStates = linkedMapOf<String, AgentTaskState>()
         private val pinnedTaskIds = linkedSetOf<String>()
         private val groomingMilestones = mutableSetOf<GroomingMilestone>()
+        // 系统事件只负责投放外部事实，具体任务编排由 Agent 处理。
         private val timelineScript = listOf(
             ScenarioTimelineEvent(
                 id = "petsmart-open-slot",
@@ -72,20 +74,20 @@ class AgentExperienceViewModel
                 body = "原本 14:00 的客人计划有变，现在可以安排 Kylin 洗澡和去浮毛。",
             ),
             ScenarioTimelineEvent(
-                id = "ella-call",
-                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(9),
-                type = "incoming_call",
-                source = "Ella",
-                title = "Ella 来电",
-                body = "通话中会提到一个需要跟进的家庭待办。",
-            ),
-            ScenarioTimelineEvent(
                 id = "driver-1320-confirm",
                 triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(8),
                 type = "incoming_sms",
                 source = "Driver",
                 title = "老陈回复",
                 body = "好的，我 13:20 到楼下等 Kylin。",
+            ),
+            ScenarioTimelineEvent(
+                id = "ella-call",
+                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(9),
+                type = "incoming_call",
+                source = "Ella",
+                title = "Ella 来电",
+                body = "通话中会提到一个需要跟进的家庭待办。",
             ),
             ScenarioTimelineEvent(
                 id = "ella-call-ended",
@@ -96,12 +98,68 @@ class AgentExperienceViewModel
                 body = "通话转写完成，识别到一个家庭采购待办。",
             ),
             ScenarioTimelineEvent(
+                id = "ella-shopping-followup",
+                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(16),
+                type = "incoming_sms",
+                source = "Ella",
+                title = "Ella 补充",
+                body = "刚才说的低脂牛奶和洗衣液优先，水果看你方便。",
+            ),
+            ScenarioTimelineEvent(
                 id = "kylin-downstairs-reminder",
                 triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(20),
                 type = "reminder_fired",
                 source = "System",
                 title = "送 Kylin 下楼",
                 body = "司机老陈即将到楼下。",
+            ),
+            ScenarioTimelineEvent(
+                id = "driver-kylin-picked-up",
+                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(22),
+                type = "incoming_sms",
+                source = "Driver",
+                title = "老陈接到 Kylin",
+                body = "我已经接到 Kylin，正出发去 PetSmart。",
+            ),
+            ScenarioTimelineEvent(
+                id = "market-delivery-window",
+                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(27),
+                type = "notification",
+                source = "Ole",
+                title = "附近超市配送",
+                body = "低脂牛奶和常用洗衣液都有货，45 分钟内可送达。",
+            ),
+            ScenarioTimelineEvent(
+                id = "driver-arrived-petsmart",
+                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(36),
+                type = "incoming_sms",
+                source = "Driver",
+                title = "老陈送达",
+                body = "Kylin 已送到 PetSmart，店员接走了。",
+            ),
+            ScenarioTimelineEvent(
+                id = "petsmart-service-started",
+                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(38),
+                type = "incoming_sms",
+                source = "PetSmart",
+                title = "PetSmart 到店确认",
+                body = "Kylin 已到店，正在洗澡和去浮毛，预计 14:45 完成。",
+            ),
+            ScenarioTimelineEvent(
+                id = "ella-shopping-clarify",
+                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(45),
+                type = "incoming_sms",
+                source = "Ella",
+                title = "Ella 调整清单",
+                body = "洗衣液买常用那款就行，猫粮不用买。",
+            ),
+            ScenarioTimelineEvent(
+                id = "petsmart-service-progress",
+                triggerAt = INITIAL_SCENARIO_CLOCK.withHour(13).withMinute(54),
+                type = "incoming_sms",
+                source = "PetSmart",
+                title = "PetSmart 进度",
+                body = "Kylin 毛量比上次多，去浮毛会多 15 分钟，预计 15:00 左右好。",
             ),
         )
 
@@ -1634,6 +1692,7 @@ class AgentExperienceViewModel
                 is IncomingCallEvent -> handleIncomingCallEvent(event)
                 is CallEndedEvent -> handleCallEndedEvent(event)
                 is ReminderFiredEvent -> handleReminderEvent(event)
+                is RuntimeNotificationEvent -> handleRuntimeNotificationEvent(event)
                 else -> Unit
             }
         }
@@ -1642,6 +1701,12 @@ class AgentExperienceViewModel
             when (event.id) {
                 "petsmart-open-slot" -> createPetGroomingTask(event)
                 "driver-1320-confirm" -> handleDriverPickupConfirmation(event)
+                "ella-shopping-followup" -> handleEllaShoppingFollowup(event)
+                "driver-kylin-picked-up" -> handleDriverPickedUpKylin(event)
+                "driver-arrived-petsmart" -> handleDriverArrivedPetSmart(event)
+                "petsmart-service-started" -> handlePetSmartServiceStarted(event)
+                "ella-shopping-clarify" -> handleEllaShoppingClarify(event)
+                "petsmart-service-progress" -> handlePetSmartServiceProgress(event)
             }
         }
 
@@ -1673,7 +1738,7 @@ class AgentExperienceViewModel
                     label = "等待",
                     detail = "等待用户决策",
                     completed = 0,
-                    total = 5,
+                    total = 7,
                 ),
                 decisionPrompt = DecisionPrompt(
                     text = "要把 Kylin 改到 14:00 洗澡和去浮毛吗？",
@@ -1741,7 +1806,7 @@ class AgentExperienceViewModel
                     label = "进行中",
                     detail = "等待司机确认",
                     completed = 2,
-                    total = 5,
+                    total = 7,
                 ),
                 decisionPrompt = null,
                 activeActionValue = null,
@@ -1822,7 +1887,269 @@ class AgentExperienceViewModel
                         label = "进行中",
                         detail = "等待 13:20 提醒",
                         completed = 3,
-                        total = 5,
+                        total = 7,
+                    ),
+                )
+            }
+        }
+
+        private fun handleEllaShoppingFollowup(event: IncomingSmsEvent) {
+            updateTaskState(FAMILY_TASK_ID, activate = false) { task ->
+                task.copy(
+                    updatedTimeText = blueprintTimeText(event.occurredAt),
+                    subtitle = "采购优先级已更新",
+                    conversationItems = appendConversation(
+                        task.conversationItems,
+                        AgentConversationRole.AGENT,
+                        "Ella 又补充了采购优先级：低脂牛奶和洗衣液优先，水果顺路再买。我已经同步到任务里。",
+                    ),
+                    taskLogs = appendTaskLogs(
+                        task.taskLogs,
+                        listOf(
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "收到 Ella 的短信：${event.body}",
+                            ),
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "更新采购优先级：低脂牛奶、洗衣液优先，水果可选。",
+                            ),
+                        ),
+                    ),
+                    progressLine = AgentProgressLine(
+                        label = "进行中",
+                        detail = "匹配采购方案",
+                        completed = 2,
+                        total = 4,
+                    ),
+                )
+            }
+        }
+
+        private fun handleDriverPickedUpKylin(event: IncomingSmsEvent) {
+            if (!petGroomingAccepted) return
+            updateTaskState(PET_TASK_ID, activate = false) { task ->
+                task.copy(
+                    status = AgentTimelineStatus.RUNNING,
+                    updatedTimeText = blueprintTimeText(event.occurredAt),
+                    subtitle = "Kylin 已上车",
+                    conversationItems = appendConversation(
+                        task.conversationItems,
+                        AgentConversationRole.AGENT,
+                        "老陈已经接到 Kylin，正在去 PetSmart 的路上。",
+                    ),
+                    taskLogs = appendTaskLogs(
+                        task.taskLogs,
+                        listOf(
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "收到 Driver 的短信：${event.body}",
+                            ),
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "更新状态：Kylin 已上车，前往 PetSmart。",
+                            ),
+                        ),
+                    ),
+                    progressLine = AgentProgressLine(
+                        label = "进行中",
+                        detail = "前往 PetSmart",
+                        completed = 5,
+                        total = 7,
+                    ),
+                )
+            }
+        }
+
+        private fun handleRuntimeNotificationEvent(event: RuntimeNotificationEvent) {
+            when (event.id) {
+                "market-delivery-window" -> handleMarketDeliveryWindow(event)
+            }
+        }
+
+        private fun handleMarketDeliveryWindow(event: RuntimeNotificationEvent) {
+            updateTaskState(FAMILY_TASK_ID, activate = false) { task ->
+                task.copy(
+                    updatedTimeText = blueprintTimeText(event.occurredAt),
+                    subtitle = "已找到可配送渠道",
+                    conversationItems = appendConversation(
+                        task.conversationItems,
+                        AgentConversationRole.AGENT,
+                        "附近超市有低脂牛奶和常用洗衣液，45 分钟内可送达。我先把它作为家庭采购候选，不打断你。",
+                    ),
+                    taskLogs = appendTaskLogs(
+                        task.taskLogs,
+                        listOf(
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "收到 Ole 通知：${event.body}",
+                            ),
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "加入采购候选：低脂牛奶、常用洗衣液，预计 45 分钟内送达。",
+                            ),
+                        ),
+                    ),
+                    participants = task.participants.withParticipant(
+                        AgentParticipant("ole", "O", "Ole", "market"),
+                    ),
+                    progressLine = AgentProgressLine(
+                        label = "进行中",
+                        detail = "等待清单确认",
+                        completed = 3,
+                        total = 4,
+                    ),
+                )
+            }
+        }
+
+        private fun handleDriverArrivedPetSmart(event: IncomingSmsEvent) {
+            if (!petGroomingAccepted) return
+            updateTaskState(PET_TASK_ID, activate = false) { task ->
+                task.copy(
+                    status = AgentTimelineStatus.RUNNING,
+                    updatedTimeText = blueprintTimeText(event.occurredAt),
+                    subtitle = "Kylin 已到 PetSmart",
+                    conversationItems = appendConversation(
+                        task.conversationItems,
+                        AgentConversationRole.AGENT,
+                        "老陈已经把 Kylin 送到 PetSmart，店员已接走。",
+                    ),
+                    taskLogs = appendTaskLogs(
+                        task.taskLogs,
+                        listOf(
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "收到 Driver 的短信：${event.body}",
+                            ),
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "更新状态：Kylin 已到店，等待 PetSmart 服务进度。",
+                            ),
+                        ),
+                    ),
+                    progressLine = AgentProgressLine(
+                        label = "进行中",
+                        detail = "等待 PetSmart 进度",
+                        completed = 6,
+                        total = 7,
+                    ),
+                )
+            }
+        }
+
+        private fun handlePetSmartServiceStarted(event: IncomingSmsEvent) {
+            if (!petGroomingAccepted) return
+            updateTaskState(PET_TASK_ID, activate = false) { task ->
+                task.copy(
+                    status = AgentTimelineStatus.RUNNING,
+                    updatedTimeText = blueprintTimeText(event.occurredAt),
+                    subtitle = "洗澡和去浮毛进行中",
+                    conversationItems = appendConversation(
+                        task.conversationItems,
+                        AgentConversationRole.AGENT,
+                        "PetSmart 确认 Kylin 已开始洗澡和去浮毛，预计 14:45 完成。",
+                    ),
+                    taskLogs = appendTaskLogs(
+                        task.taskLogs,
+                        listOf(
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "收到 PetSmart 的短信：${event.body}",
+                            ),
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "更新状态：服务已开始，继续等待完成通知。",
+                            ),
+                        ),
+                    ),
+                    progressLine = AgentProgressLine(
+                        label = "进行中",
+                        detail = "等待完成通知",
+                        completed = 6,
+                        total = 7,
+                    ),
+                )
+            }
+        }
+
+        private fun handleEllaShoppingClarify(event: IncomingSmsEvent) {
+            updateTaskState(FAMILY_TASK_ID, activate = false) { task ->
+                task.copy(
+                    updatedTimeText = blueprintTimeText(event.occurredAt),
+                    subtitle = "采购清单已收敛",
+                    conversationItems = appendConversation(
+                        task.conversationItems,
+                        AgentConversationRole.AGENT,
+                        "Ella 又调整了清单：洗衣液买常用款，猫粮不用买。我已经把候选清单收敛好了。",
+                    ),
+                    taskLogs = appendTaskLogs(
+                        task.taskLogs,
+                        listOf(
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "收到 Ella 的短信：${event.body}",
+                            ),
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "更新采购清单：保留低脂牛奶、常用洗衣液；移除猫粮。",
+                            ),
+                        ),
+                    ),
+                    progressLine = AgentProgressLine(
+                        label = "进行中",
+                        detail = "清单已收敛",
+                        completed = 4,
+                        total = 4,
+                    ),
+                )
+            }
+        }
+
+        private fun handlePetSmartServiceProgress(event: IncomingSmsEvent) {
+            if (!petGroomingAccepted) return
+            updateTaskState(PET_TASK_ID, activate = false) { task ->
+                task.copy(
+                    status = AgentTimelineStatus.RUNNING,
+                    updatedTimeText = blueprintTimeText(event.occurredAt),
+                    subtitle = "完成时间调整到 15:00",
+                    conversationItems = appendConversation(
+                        task.conversationItems,
+                        AgentConversationRole.AGENT,
+                        "PetSmart 更新了进度：Kylin 去浮毛会多 15 分钟，预计 15:00 左右完成。我会继续等完成通知。",
+                    ),
+                    taskLogs = appendTaskLogs(
+                        task.taskLogs,
+                        listOf(
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "收到 PetSmart 的短信：${event.body}",
+                            ),
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(event.occurredAt),
+                                text = "更新预计完成时间：15:00 左右。",
+                            ),
+                        ),
+                    ),
+                    progressLine = AgentProgressLine(
+                        label = "进行中",
+                        detail = "继续监听完成通知",
+                        completed = 6,
+                        total = 7,
                     ),
                 )
             }
@@ -1875,7 +2202,7 @@ class AgentExperienceViewModel
                     label = "进行中",
                     detail = "整理待办事项",
                     completed = 1,
-                    total = 3,
+                    total = 4,
                 ),
             )
             _frame.update { it.copy(activeCall = null) }
@@ -1913,7 +2240,7 @@ class AgentExperienceViewModel
                         label = "进行中",
                         detail = "等待司机接到 Kylin",
                         completed = 4,
-                        total = 5,
+                        total = 7,
                     ),
                 )
             }
@@ -2008,6 +2335,9 @@ class AgentExperienceViewModel
             taskSortCounter += 1
             return taskSortCounter
         }
+
+        private fun List<AgentParticipant>.withParticipant(participant: AgentParticipant): List<AgentParticipant> =
+            if (any { it.id == participant.id }) this else this + participant
 
         private fun appendSystemEvent(
             existing: List<AgentSystemEvent>,
@@ -2420,7 +2750,7 @@ class AgentExperienceViewModel
             private const val TAG = "AgentExperienceViewModel"
             private const val MAX_TRACE_LINES = 80
             private const val MAX_SIGNALS = 12
-            private const val MAX_SYSTEM_EVENTS = 10
+            private const val MAX_SYSTEM_EVENTS = 14
             private const val MAX_PARTICIPANTS = 5
             private const val MAX_CONVERSATION_ITEMS = 40
             private const val MAX_TASK_LOGS = 80
