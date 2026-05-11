@@ -91,6 +91,15 @@ fun AgentExperienceScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var blueprintOpen by rememberSaveable { mutableStateOf(false) }
+    var autoOpenedTaskIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+
+    LaunchedEffect(frame.activeTaskId, frame.taskLogs.size) {
+        val taskId = frame.activeTaskId
+        if (taskId != null && frame.taskLogs.isNotEmpty() && taskId !in autoOpenedTaskIds) {
+            blueprintOpen = true
+            autoOpenedTaskIds = autoOpenedTaskIds + taskId
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -108,11 +117,13 @@ fun AgentExperienceScreen(
             PhoneFlowCanvas(
                 frame = frame,
                 blueprintOpen = blueprintOpen,
-                onToggleBlueprint = { blueprintOpen = !blueprintOpen },
+                onOpenBlueprint = { blueprintOpen = true },
                 onCollapseBlueprint = { blueprintOpen = false },
                 onOpenTrace = { scope.launch { drawerState.open() } },
                 onOpenSettings = onOpenSettings,
                 onOpenChat = onOpenChat,
+                onAccelerateClock = viewModel::accelerateClockUntilNextEvent,
+                onSelectTask = viewModel::selectTask,
                 onStart = viewModel::startScenario,
                 onAction = viewModel::chooseDecision,
                 onSubmitText = viewModel::submitDecisionText,
@@ -126,11 +137,13 @@ fun AgentExperienceScreen(
 private fun PhoneFlowCanvas(
     frame: AgentExperienceFrame,
     blueprintOpen: Boolean,
-    onToggleBlueprint: () -> Unit,
+    onOpenBlueprint: () -> Unit,
     onCollapseBlueprint: () -> Unit,
     onOpenTrace: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenChat: () -> Unit,
+    onAccelerateClock: () -> Unit,
+    onSelectTask: (String) -> Unit,
     onStart: () -> Unit,
     onAction: (ActionButton) -> Unit,
     onSubmitText: (String) -> Unit,
@@ -150,28 +163,42 @@ private fun PhoneFlowCanvas(
             } else {
                 TimeHeader(
                     frame = frame,
-                    onToggleBlueprint = onToggleBlueprint,
+                    onOpenBlueprint = onOpenBlueprint,
+                    onAccelerateClock = onAccelerateClock,
                     onOpenTrace = onOpenTrace,
                     onOpenSettings = onOpenSettings,
                 )
             }
-            SessionArea(
-                frame = frame,
-                blueprintOpen = blueprintOpen,
-                onCollapseBlueprint = onCollapseBlueprint,
-                onStart = onStart,
-                onAction = onAction,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 28.dp)
-                    .padding(top = if (blueprintOpen) 10.dp else 14.dp),
-            )
-            TaskProgressStrip(
-                frame = frame,
-                modifier = Modifier
-                    .padding(horizontal = 28.dp)
-                    .padding(top = 4.dp, bottom = 2.dp),
-            )
+            if (frame.activeTaskId == null) {
+                WorkbenchArea(
+                    frame = frame,
+                    onSelectTask = onSelectTask,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 28.dp)
+                        .padding(top = if (blueprintOpen) 10.dp else 14.dp),
+                )
+            } else {
+                SessionArea(
+                    frame = frame,
+                    blueprintOpen = blueprintOpen,
+                    onCollapseBlueprint = onCollapseBlueprint,
+                    onStart = onStart,
+                    onAction = onAction,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 28.dp)
+                        .padding(top = if (blueprintOpen) 10.dp else 14.dp),
+                )
+            }
+            if (frame.activeTaskId != null) {
+                TaskProgressStrip(
+                    frame = frame,
+                    modifier = Modifier
+                        .padding(horizontal = 28.dp)
+                        .padding(top = 4.dp, bottom = 2.dp),
+                )
+            }
             InteractionDock(
                 active = frame.decisionPrompt != null && !frame.busy,
                 onOpenChat = onOpenChat,
@@ -193,7 +220,8 @@ private fun TimeHeader(
     frame: AgentExperienceFrame,
     onOpenTrace: () -> Unit,
     onOpenSettings: () -> Unit,
-    onToggleBlueprint: () -> Unit,
+    onOpenBlueprint: () -> Unit,
+    onAccelerateClock: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -212,27 +240,34 @@ private fun TimeHeader(
                 Icon(Icons.Default.Menu, contentDescription = "Execution trace", tint = AgentWhite)
             }
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onToggleBlueprint),
+                modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text(
-                    text = frame.clockTimeText,
-                    color = AgentWhite,
-                    fontSize = 32.sp,
-                    lineHeight = 36.sp,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1,
-                )
-                Text(
-                    text = frame.clockDateText,
-                    color = AgentMuted,
-                    fontSize = 12.sp,
-                    lineHeight = 15.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Column(
+                    modifier = Modifier.clickable(onClick = onAccelerateClock),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = frame.clockTimeText,
+                        color = AgentWhite,
+                        fontSize = 32.sp,
+                        lineHeight = 36.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = frame.clockDateText,
+                        color = AgentMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                AiWorkIndicator(
+                    active = frame.busy || frame.taskCards.isNotEmpty() || frame.recentSystemEvents.isNotEmpty(),
+                    onClick = onOpenBlueprint,
                 )
             }
             IconButton(onClick = onOpenSettings) {
@@ -240,6 +275,55 @@ private fun TimeHeader(
             }
         }
     }
+}
+
+@Composable
+private fun AiWorkIndicator(
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "ai_work")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+        ),
+        label = "ai_work_phase",
+    )
+    Box(
+        modifier = Modifier
+            .padding(top = 7.dp)
+            .size(26.dp)
+            .clickable(onClick = onClick)
+            .drawWithContent {
+                drawContent()
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val orbitRadius = size.minDimension * 0.34f
+                val baseColor = if (active) Color(0xFF68C8FF) else AgentMuted
+                drawCircle(
+                    color = baseColor.copy(alpha = if (active) 0.18f else 0.08f),
+                    radius = orbitRadius,
+                    center = center,
+                    style = Stroke(width = 1.15.dp.toPx()),
+                )
+                val angle = phase * 2f * PI.toFloat()
+                val dot = Offset(
+                    x = center.x + cos(angle) * orbitRadius,
+                    y = center.y + sin(angle) * orbitRadius,
+                )
+                drawCircle(
+                    color = baseColor.copy(alpha = if (active) 0.96f else 0.54f),
+                    radius = 2.15.dp.toPx(),
+                    center = dot,
+                )
+                drawCircle(
+                    color = AgentWhite.copy(alpha = if (active) 0.72f else 0.26f),
+                    radius = 1.dp.toPx(),
+                    center = center,
+                )
+            },
+    )
 }
 
 @Composable
@@ -279,7 +363,7 @@ private fun BlueprintDeck(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "麒麟日常洗护",
+                        text = frame.activeTaskTitle,
                         color = AgentWhite,
                         fontSize = 22.sp,
                         lineHeight = 26.sp,
@@ -343,6 +427,153 @@ private fun BlueprintPartyAvatar(label: String) {
                 lineHeight = 14.sp,
                 fontWeight = FontWeight.Black,
                 maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkbenchArea(
+    frame: AgentExperienceFrame,
+    onSelectTask: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+    ) {
+        if (frame.taskCards.isEmpty() && frame.recentSystemEvents.isEmpty()) {
+            item {
+                Text(
+                    text = "等待系统事件。",
+                    color = AgentMuted,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.padding(top = 24.dp),
+                )
+            }
+        }
+        if (frame.taskCards.isNotEmpty()) {
+            item {
+                Text(
+                    text = "任务",
+                    color = AgentWhite,
+                    fontSize = 18.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            items(frame.taskCards, key = { it.id }) { task ->
+                TaskCardRow(task = task, onClick = { onSelectTask(task.id) })
+            }
+        }
+        if (frame.recentSystemEvents.isNotEmpty()) {
+            item {
+                Text(
+                    text = "系统事件",
+                    color = AgentWhite,
+                    fontSize = 18.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            items(frame.recentSystemEvents, key = { it.id }) { event ->
+                SystemEventRow(event)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskCardRow(
+    task: AgentTaskCard,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = if (task.isActive) AgentPanelActive else AgentPanel,
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    text = task.title,
+                    color = AgentWhite,
+                    fontSize = 16.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = task.subtitle,
+                    color = AgentMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = task.updatedTimeText,
+                color = AgentMuted,
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SystemEventRow(event: AgentSystemEvent) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = AgentPanel,
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = event.timeText,
+                    color = AgentMuted,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 1,
+                )
+                Text(
+                    text = event.source,
+                    color = AgentWhite.copy(alpha = 0.78f),
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 1,
+                )
+            }
+            Text(
+                text = event.title,
+                color = AgentWhite,
+                fontSize = 15.sp,
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = event.body,
+                color = AgentMuted,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
             )
         }
     }
