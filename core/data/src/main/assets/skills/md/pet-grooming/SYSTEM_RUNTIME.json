@@ -246,7 +246,7 @@
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "keywords": ["pickup", "pick up", "come get", "接", "楼下"],
       "eventType": "driver_home_pickup_confirmed",
-      "reply": "收到，我{pickup_time}来接 Kylin，9:00 前送到 PetSmart。"
+      "reply": "收到，我{pickup_time}来接 Kylin，会按预约时间前送到 PetSmart。"
     },
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
