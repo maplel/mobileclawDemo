@@ -121,6 +121,12 @@ For the normal Kylin scope in this skill:
 
 Use the same expected fee from the pet salon search result for payment and accounting in the normal selected branch, unless a trusted system message reports an abnormal fee, add-on, discount, or price conflict.
 
+## PetSmart Timing
+
+After Y keeps this week's grooming, the first outbound SMS to PetSmart must ask for the regular Sunday 14:00 bath plus de-shedding slot for Kylin. Phrase it naturally in Chinese, for example: `明天下午2点可以给 Kylin 安排基础洗澡和去浮毛服务吗？`
+
+Do not ask for 9:00, 17:00, or broad morning/afternoon alternatives in that first PetSmart SMS. Those are fallback options returned by PetSmart after the regular 14:00 request cannot be satisfied, not options the agent should propose first.
+
 ## Driver Timing
 
 For a confirmed 9:00 PetSmart appointment, use 8:30 as the normal home pickup time for Driver. Phrase the first Driver message as home pickup at 8:30 and PetSmart arrival by 9:00. Do not include a predicted grooming finish time or return instruction in that first Driver message. Do not ask Driver to arrive at Y's home at 9:00, because that would miss the appointment start.
@@ -145,7 +151,7 @@ Use this order as the normal orchestration pattern:
    - `device_system` with `action: "memory_read"` and `key: "social"`.
 2. Create a concise plan with `create_plan`. Continue execution after planning.
 3. Use `device_system` with `action: "service_call"`, `serviceId: "pet_salon_search"`, and action `get_pet_shop_detail` with `query: "PetSmart"` before contacting the grooming shop. Use this result for identity, address, contact details, service items, and published prices. Keep the expected fee from this result for payment and accounting.
-4. Use `system_send_sms` and `system_wait_for_sms` to ask PetSmart about available times, final service scope, and booking status. Do not ask for price or final price in the normal path, and do not include published price totals in normal PetSmart SMS. Only discuss price by SMS when the workflow sees an add-on, abnormal cost, discount, or price conflict.
+4. Use `system_send_sms` and `system_wait_for_sms` to ask PetSmart about available times, final service scope, and booking status. The first PetSmart SMS after Y keeps this week must ask for the regular Sunday 14:00 bath plus de-shedding slot; do not ask for 9:00 or afternoon alternatives until PetSmart replies. Do not ask for price or final price in the normal path, and do not include published price totals in normal PetSmart SMS. Only discuss price by SMS when the workflow sees an add-on, abnormal cost, discount, or price conflict.
 5. Do not search for or compare other shops unless PetSmart cannot satisfy the requested timing or service scope.
 6. Resolve Driver through `system_search_contacts` as Y's private driver only after PetSmart has sent an inbound booking-confirmed SMS for the selected slot.
 7. Use `system_send_sms` for outbound SMS. Driver SMS must wait until PetSmart confirms the selected slot by inbound SMS. After that confirmation, contact Driver directly without asking Y again. For a 9:00 appointment, tell Driver to pick Kylin up from Y's home at 8:30 and deliver him to PetSmart by 9:00; do not include a predicted finish time, return pickup time, or home-arrival instruction in that first Driver SMS; do not tell Driver to pick Kylin up at PetSmart until PetSmart later says grooming is finished, Kylin is ready, or PetSmart gives a revised pickup time after a delay. Address Driver as `司机您好` or `您好`, never as Y. After the first Driver SMS, wait first for pickup confirmation, then open a separate Driver listener for delivery-to-PetSmart; do not treat pickup confirmation as delivery.

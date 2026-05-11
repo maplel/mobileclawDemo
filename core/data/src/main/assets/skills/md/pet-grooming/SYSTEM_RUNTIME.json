@@ -124,6 +124,12 @@
       "instruction": "重新发送给 PetSmart 的短信，只确认周日9点、Kylin 的洗澡和去浮毛服务，不要包含价格、费用、合计或 CNY。"
     },
     {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "messageKeywords": ["上午9:00或下午", "9:00或下午", "上午9点或下午", "9点或下午", "上午九点或下午", "15:00后", "15点后"],
+      "message": "短信暂未发送：首次询问 PetSmart 时应先问常规周日下午2点洗澡和去浮毛，不要提前列出9点或下午备选。",
+      "instruction": "重新发送给 PetSmart 的短信：请问明天下午2点可以给 Kylin 安排基础洗澡和去浮毛服务吗？不要提前询问9点、17点或宽泛下午备选。"
+    },
+    {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "messageKeywords": ["PetSmart接", "PetSmart 接", "去PetSmart接", "去 PetSmart 接", "接回来", "接回", "完成后再出发接"],
       "blockedUntil": {
