@@ -525,15 +525,18 @@ class AgentExperienceViewModel
                     }
                     "tool_start" -> {
                         val event = toolStartEvent(tool)
-                        base.copy(
+                        val visibleBase = base.withPendingSelectedAction()
+                        visibleBase.copy(
                             statusLabel = "Executing",
+                            decisionPrompt = null,
+                            activeActionValue = null,
                             progressLine = AgentProgressLine(
                                 label = "Executing",
                                 detail = toolProgressDetail(tool),
-                                completed = completedStageCount(base),
-                                total = totalStageCount(base),
+                                completed = completedStageCount(visibleBase),
+                                total = totalStageCount(visibleBase),
                             ),
-                            timeline = base.timeline + event,
+                            timeline = visibleBase.timeline + event,
                         )
                     }
                     "tool" -> {
@@ -590,28 +593,43 @@ class AgentExperienceViewModel
                         val actions = parseActionButtons(metadata["_actions"], content)
                         val displayText = compactDecisionPromptText(content)
                         val visibleBase = base.withPendingSelectedAction()
-                        visibleBase.copy(
-                            statusLabel = "Waiting for decision",
-                            decisionPrompt = DecisionPrompt(displayText, actions),
-                            activeActionValue = null,
-                            conversationItems = appendConversation(
-                                visibleBase.conversationItems,
-                                AgentConversationRole.AGENT,
-                                displayText,
-                            ),
-                            progressLine = AgentProgressLine(
-                                label = "Waiting",
-                                detail = "User decision required",
-                                completed = completedStageCount(base),
-                                total = totalStageCount(base),
-                            ),
-                            timeline = base.timeline + AgentTimelineEvent(
-                                id = nextId("decision"),
-                                title = "Decision point",
-                                detail = displayText,
-                                status = AgentTimelineStatus.BLOCKED,
-                            ),
-                        )
+                        if (shouldSuppressResolvedGroomingPrompt(content)) {
+                            visibleBase.copy(
+                                statusLabel = "Running",
+                                finalSummary = content,
+                                decisionPrompt = null,
+                                activeActionValue = null,
+                                progressLine = AgentProgressLine(
+                                    label = "Running",
+                                    detail = "Continuing workflow",
+                                    completed = completedStageCount(visibleBase),
+                                    total = totalStageCount(visibleBase),
+                                ),
+                            )
+                        } else {
+                            visibleBase.copy(
+                                statusLabel = "Waiting for decision",
+                                decisionPrompt = DecisionPrompt(displayText, actions),
+                                activeActionValue = null,
+                                conversationItems = appendConversation(
+                                    visibleBase.conversationItems,
+                                    AgentConversationRole.AGENT,
+                                    displayText,
+                                ),
+                                progressLine = AgentProgressLine(
+                                    label = "Waiting",
+                                    detail = "User decision required",
+                                    completed = completedStageCount(visibleBase),
+                                    total = totalStageCount(visibleBase),
+                                ),
+                                timeline = visibleBase.timeline + AgentTimelineEvent(
+                                    id = nextId("decision"),
+                                    title = "Decision point",
+                                    detail = displayText,
+                                    status = AgentTimelineStatus.BLOCKED,
+                                ),
+                            )
+                        }
                     }
                     "error" ->
                         base.withPendingSelectedAction().copy(
@@ -656,7 +674,8 @@ class AgentExperienceViewModel
                                 ),
                             )
                         } else {
-                            val decisionPrompt = inferDecisionPrompt(content)
+                            val decisionPrompt =
+                                if (shouldSuppressResolvedGroomingPrompt(content)) null else inferDecisionPrompt(content)
                             if (decisionPrompt != null) {
                                 val visibleBase = base.withPendingSelectedAction()
                                 visibleBase.copy(
@@ -1632,6 +1651,28 @@ class AgentExperienceViewModel
             val hasBathOnly = lower.contains("bath-only") || lower.contains("bath only") ||
                 text.contains("只洗澡") || text.contains("不能除毛") || text.contains("不含除毛")
             return hasPetSmart && hasAfternoon && hasBathOnly
+        }
+
+        private fun shouldSuppressResolvedGroomingPrompt(text: String): Boolean {
+            if (scenario.scenarioId != "pet-grooming") return false
+            val resolvedInitialTradeoff =
+                latestScenarioDecisionIntent in setOf(
+                    ScenarioDecisionIntent.PetGroomingBookNine,
+                    ScenarioDecisionIntent.PetGroomingAskAfternoon,
+                    ScenarioDecisionIntent.PetGroomingBookAfternoonBathOnly,
+                    ScenarioDecisionIntent.PetGroomingFindAlternative,
+                )
+            val resolvedAfternoonTradeoff =
+                latestScenarioDecisionIntent in setOf(
+                    ScenarioDecisionIntent.PetGroomingBookNine,
+                    ScenarioDecisionIntent.PetGroomingBookAfternoonBathOnly,
+                    ScenarioDecisionIntent.PetGroomingFindAlternative,
+                )
+            return when {
+                isAfternoonBathOnlyTradeoff(text) -> resolvedAfternoonTradeoff
+                isGroomingTimeTradeoff(text) -> resolvedInitialTradeoff
+                else -> false
+            }
         }
 
         private fun compactScenarioActionLabel(
