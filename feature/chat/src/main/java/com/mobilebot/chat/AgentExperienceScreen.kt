@@ -1624,31 +1624,33 @@ private fun TaskSidebar(
         color = AgentPanel,
         contentColor = AgentWhite,
     ) {
-        Text(
-            text = "任务",
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-            color = AgentWhite,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        HorizontalDivider(color = AgentWhite.copy(alpha = 0.18f))
-        if (tasks.isEmpty()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             Text(
-                text = "暂无任务",
-                modifier = Modifier.padding(20.dp),
-                color = AgentMuted,
+                text = "任务",
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                color = AgentWhite,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(tasks, key = { it.id }) { task ->
-                    SidebarTaskCard(
-                        task = task,
-                        onSelectTask = { onSelectTask(task.id) },
-                        onTogglePinned = { onToggleTaskPinned(task.id) },
-                    )
+            HorizontalDivider(color = AgentWhite.copy(alpha = 0.18f))
+            if (tasks.isEmpty()) {
+                Text(
+                    text = "暂无任务",
+                    modifier = Modifier.padding(20.dp),
+                    color = AgentMuted,
+                )
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(tasks, key = { it.id }) { task ->
+                        SidebarTaskCard(
+                            task = task,
+                            onSelectTask = { onSelectTask(task.id) },
+                            onTogglePinned = { onToggleTaskPinned(task.id) },
+                        )
+                    }
                 }
             }
         }
