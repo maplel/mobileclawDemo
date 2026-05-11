@@ -1,0 +1,34 @@
+{
+  "id": "geico",
+  "name": "Geico Insurance",
+  "category": "insurance",
+  "baseUrl": "https://api.geico.com/v1",
+  "authType": "oauth2",
+  "actions": [
+    {
+      "name": "getPolicy",
+      "method": "GET",
+      "path": "/policies/{policyId}",
+      "description": "Retrieve insurance policy details including coverage, deductible, and rental car provisions"
+    },
+    {
+      "name": "fileClaim",
+      "method": "POST",
+      "path": "/claims",
+      "description": "File a new insurance claim with incident details, photos, and police report number",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "getClaimStatus",
+      "method": "GET",
+      "path": "/claims/{claimId}",
+      "description": "Check the status of an existing insurance claim"
+    },
+    {
+      "name": "uploadEvidence",
+      "method": "POST",
+      "path": "/claims/{claimId}/evidence",
+      "description": "Upload photos, dashcam footage, or documents as evidence for a claim"
+    }
+  ]
+}

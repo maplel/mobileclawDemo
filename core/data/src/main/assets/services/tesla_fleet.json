@@ -1,0 +1,39 @@
+{
+  "id": "tesla_fleet",
+  "name": "Tesla Fleet API",
+  "category": "automotive",
+  "baseUrl": "https://fleet-api.prd.na.vn.cloud.tesla.com",
+  "authType": "oauth2",
+  "actions": [
+    {
+      "name": "getVehicleData",
+      "method": "GET",
+      "path": "/api/1/vehicles/{vehicleId}/vehicle_data",
+      "description": "Get comprehensive vehicle data including location, state, and diagnostics"
+    },
+    {
+      "name": "getCollisionReport",
+      "method": "GET",
+      "path": "/api/1/vehicles/{vehicleId}/collision_report",
+      "description": "Retrieve collision detection data including impact severity, direction, and airbag status"
+    },
+    {
+      "name": "getDashcamFootage",
+      "method": "GET",
+      "path": "/api/1/vehicles/{vehicleId}/dashcam/clips",
+      "description": "List available dashcam video clips around the time of an incident"
+    },
+    {
+      "name": "getLocation",
+      "method": "GET",
+      "path": "/api/1/vehicles/{vehicleId}/location",
+      "description": "Get current vehicle GPS location"
+    },
+    {
+      "name": "flashLights",
+      "method": "POST",
+      "path": "/api/1/vehicles/{vehicleId}/command/flash_lights",
+      "description": "Flash vehicle lights to help locate it"
+    }
+  ]
+}

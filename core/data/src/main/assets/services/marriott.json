@@ -1,0 +1,40 @@
+{
+  "id": "marriott",
+  "name": "Marriott Bonvoy",
+  "category": "hospitality",
+  "baseUrl": "https://api.marriott.com/v1",
+  "authType": "oauth2",
+  "actions": [
+    {
+      "name": "searchHotels",
+      "method": "GET",
+      "path": "/hotels/search",
+      "description": "Search Marriott properties by location, dates, and preferences"
+    },
+    {
+      "name": "getHotelDetails",
+      "method": "GET",
+      "path": "/hotels/{hotelId}",
+      "description": "Get detailed hotel information including amenities, rooms, and pricing"
+    },
+    {
+      "name": "checkAvailability",
+      "method": "GET",
+      "path": "/hotels/{hotelId}/availability",
+      "description": "Check room availability and rates for specific dates"
+    },
+    {
+      "name": "bookRoom",
+      "method": "POST",
+      "path": "/reservations",
+      "description": "Book a hotel room with Bonvoy points or payment",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "getBonvoyBalance",
+      "method": "GET",
+      "path": "/loyalty/{memberId}/balance",
+      "description": "Check Marriott Bonvoy points balance"
+    }
+  ]
+}

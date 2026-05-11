@@ -1,0 +1,21 @@
+{
+  "id": "visa_checker",
+  "name": "Visa Requirements Checker",
+  "category": "travel",
+  "baseUrl": "https://api.visachecker.com/v1",
+  "authType": "api_key",
+  "actions": [
+    {
+      "name": "checkRequirements",
+      "method": "GET",
+      "path": "/requirements",
+      "description": "Check visa requirements for a destination country based on nationality"
+    },
+    {
+      "name": "checkStatus",
+      "method": "GET",
+      "path": "/applications/{applicationId}/status",
+      "description": "Check the status of a visa application"
+    }
+  ]
+}

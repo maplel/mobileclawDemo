@@ -1,0 +1,19 @@
+{
+  "defaultMode": "virtual",
+  "bridges": {
+    "telephony": "virtual",
+    "contacts": "virtual",
+    "location": "virtual",
+    "notifications": "virtual",
+    "files": "virtual",
+    "services": "virtual",
+    "accessibility": "virtual",
+    "media": "real",
+    "browser": "real",
+    "maps": "real",
+    "clipboard": "real",
+    "share": "real",
+    "system": "virtual",
+    "appState": "real"
+  }
+}

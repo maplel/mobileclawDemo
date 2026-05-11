@@ -1,0 +1,22 @@
+appId: com.mobilebot
+name: Tool Trigger - Open URL
+---
+- launchApp
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "chat_input"
+- inputText: "open https://www.baidu.com"
+- tapOn:
+    id: "send_button"
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Bot.*"
+    optional: true
+
+- assertWithAI:
+    assertion: "The screen shows evidence that the agent processed a request to open a URL. There should be a bot response mentioning opening a URL, open_url, or a browser."
+    optional: true

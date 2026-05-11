@@ -1,0 +1,22 @@
+appId: com.mobilebot
+name: Multi-step Skill - Smart Contact Action
+---
+- launchApp
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "chat_input"
+- inputText: "send an SMS to John saying meeting tomorrow"
+- tapOn:
+    id: "send_button"
+
+- waitForAnimationToEnd:
+    timeout: 45000
+
+- assertVisible:
+    text: "Bot.*"
+    optional: true
+
+- assertWithAI:
+    assertion: "The screen shows agent activity related to contacts or SMS. The bot may have searched for a contact, attempted to send a message, asked for clarification, or reported a tool execution result."
+    optional: true

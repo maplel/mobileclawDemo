@@ -1,0 +1,41 @@
+{
+  "id": "ctrip",
+  "name": "Ctrip Travel Services",
+  "category": "travel",
+  "baseUrl": "https://api.ctrip.com/v2",
+  "authType": "api_key",
+  "actions": [
+    {
+      "name": "searchFlights",
+      "method": "GET",
+      "path": "/flights/search",
+      "description": "Search available flights by origin, destination, dates, and class"
+    },
+    {
+      "name": "bookFlight",
+      "method": "POST",
+      "path": "/flights/book",
+      "description": "Book a flight with passenger details",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "searchHotels",
+      "method": "GET",
+      "path": "/hotels/search",
+      "description": "Search hotels by location, dates, and preferences"
+    },
+    {
+      "name": "bookHotel",
+      "method": "POST",
+      "path": "/hotels/book",
+      "description": "Book a hotel room",
+      "requiresUserApproval": true
+    },
+    {
+      "name": "getFlightStatus",
+      "method": "GET",
+      "path": "/flights/{flightNumber}/status",
+      "description": "Check real-time flight status"
+    }
+  ]
+}

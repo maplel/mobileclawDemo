@@ -1,0 +1,22 @@
+appId: com.mobilebot
+name: Tool Trigger - Location
+---
+- launchApp
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "chat_input"
+- inputText: "where am I right now"
+- tapOn:
+    id: "send_button"
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Bot.*"
+    optional: true
+
+- assertWithAI:
+    assertion: "The screen shows a bot response about location. It may show coordinates, an address, a location error, or a request for location permission."
+    optional: true

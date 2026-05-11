@@ -1,0 +1,28 @@
+{
+  "id": "hotel_search",
+  "name": "Hotel Search Service",
+  "category": "travel",
+  "baseUrl": "https://api.hotelsearch.com/v1",
+  "authType": "api_key",
+  "actions": [
+    {
+      "name": "search",
+      "method": "GET",
+      "path": "/hotels/search",
+      "description": "Search hotels by city, dates, and preferences"
+    },
+    {
+      "name": "getDetails",
+      "method": "GET",
+      "path": "/hotels/{hotelId}",
+      "description": "Get detailed information for a specific hotel"
+    },
+    {
+      "name": "book",
+      "method": "POST",
+      "path": "/hotels/book",
+      "description": "Book a hotel room",
+      "requiresUserApproval": true
+    }
+  ]
+}

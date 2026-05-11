@@ -1,0 +1,12 @@
+{
+  "id": "visa_preparation",
+  "name": "Visa Preparation",
+  "description": "Check visa requirements, prepare documents, and track application status",
+  "version": "1",
+  "category": "travel",
+  "triggers": ["visa", "passport", "entry requirement", "签证", "护照", "入境"],
+  "applicableTools": ["call_service", "read_user_profile", "open_url"],
+  "requiredServices": [],
+  "promptSummary": "Check visa requirements and prepare application documents.",
+  "promptBody": "## Visa Preparation Procedure\n\n### Step 1: Determine requirements\n- Destination country\n- Purpose of travel (tourism, business, transit)\n- Duration of stay\n- User's passport nationality from read_user_profile(preferences, nationality)\n\n### Step 2: Check visa policy\n- Is visa-free entry available?\n- Is e-visa or visa-on-arrival an option?\n- What type of visa is needed?\n\n### Step 3: Document checklist\n- Generate a checklist of required documents\n- Common items: passport (6+ months validity), photos, itinerary, hotel booking, financial proof, invitation letter\n- Note any specific requirements for the destination\n\n### Step 4: Application guidance\n- Provide embassy/consulate information\n- Link to online application if available via open_url\n- Note processing time and fees\n- Recommend applying at least 4-6 weeks before travel"
+}
