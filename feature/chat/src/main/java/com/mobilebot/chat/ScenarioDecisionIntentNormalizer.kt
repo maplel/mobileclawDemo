@@ -233,7 +233,7 @@ sealed class ScenarioDecisionIntent(
             """
             $command
             FINAL_SELECTION: Y has accepted the afternoon bath-only PetSmart slot. This is not another availability question.
-            NEXT_OPERATION: Do not show another action prompt for the afternoon tradeoff. Send PetSmart a confirmation SMS that clearly says to confirm the afternoon bath-only booking for Kylin after 17:00, wait for PetSmart's booking confirmation SMS, then coordinate Driver around that selected afternoon slot. Do not ask Y to confirm the same option again.
+            NEXT_OPERATION: The next assistant step must be a tool call, not user-facing prose. Call system_send_sms to PetSmart with this exact confirmation message: `您好，确认明天下午5点后给 Kylin 预约洗澡，不做除毛。谢谢。` Then call system_wait_for_sms for PetSmart's booking confirmation. Do not ask PetSmart about availability again. Do not show another action prompt for the afternoon tradeoff. Do not ask Y to confirm the same option again.
             """.trimIndent()
     }
 
