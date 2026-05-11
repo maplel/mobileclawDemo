@@ -77,6 +77,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -168,7 +169,6 @@ private fun PhoneFlowCanvas(
             if (!blueprintOpen) {
                 TimeHeader(
                     frame = frame,
-                    onOpenBlueprint = onOpenBlueprint,
                     onAccelerateClock = onAccelerateClock,
                     onOpenTaskSidebar = onOpenTaskSidebar,
                     onOpenSettings = onOpenSettings,
@@ -234,6 +234,14 @@ private fun PhoneFlowCanvas(
                 onDismiss = onDismissNotification,
             )
         }
+        AiWorkFloatingButton(
+            active = frame.busy || frame.taskCards.isNotEmpty() || frame.recentSystemEvents.isNotEmpty(),
+            onClick = onOpenBlueprint,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 112.dp, end = 86.dp)
+                .zIndex(100f),
+        )
     }
 }
 
@@ -242,7 +250,6 @@ private fun TimeHeader(
     frame: AgentExperienceFrame,
     onOpenTaskSidebar: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenBlueprint: () -> Unit,
     onAccelerateClock: () -> Unit,
 ) {
     Surface(
@@ -287,10 +294,6 @@ private fun TimeHeader(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                AiWorkIndicator(
-                    active = frame.busy || frame.taskCards.isNotEmpty() || frame.recentSystemEvents.isNotEmpty(),
-                    onClick = onOpenBlueprint,
-                )
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "Settings", tint = AgentWhite)
@@ -300,9 +303,10 @@ private fun TimeHeader(
 }
 
 @Composable
-private fun AiWorkIndicator(
+private fun AiWorkFloatingButton(
     active: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "ai_work")
     val phase by infiniteTransition.animateFloat(
@@ -313,21 +317,25 @@ private fun AiWorkIndicator(
         ),
         label = "ai_work_phase",
     )
-    Box(
-        modifier = Modifier
-            .padding(top = 7.dp)
-            .size(26.dp)
+    Surface(
+        modifier = modifier
+            .size(54.dp)
             .clickable(onClick = onClick)
             .drawWithContent {
                 drawContent()
                 val center = Offset(size.width / 2f, size.height / 2f)
-                val orbitRadius = size.minDimension * 0.34f
+                val orbitRadius = size.minDimension * 0.38f
                 val baseColor = if (active) Color(0xFF68C8FF) else AgentMuted
                 drawCircle(
-                    color = baseColor.copy(alpha = if (active) 0.18f else 0.08f),
+                    color = baseColor.copy(alpha = if (active) 0.18f else 0.06f),
+                    radius = size.minDimension * (0.42f + 0.08f * phase),
+                    center = center,
+                )
+                drawCircle(
+                    color = baseColor.copy(alpha = if (active) 0.36f else 0.14f),
                     radius = orbitRadius,
                     center = center,
-                    style = Stroke(width = 1.15.dp.toPx()),
+                    style = Stroke(width = 1.5.dp.toPx()),
                 )
                 val angle = phase * 2f * PI.toFloat()
                 val dot = Offset(
@@ -336,16 +344,31 @@ private fun AiWorkIndicator(
                 )
                 drawCircle(
                     color = baseColor.copy(alpha = if (active) 0.96f else 0.54f),
-                    radius = 2.15.dp.toPx(),
+                    radius = 3.dp.toPx(),
                     center = dot,
                 )
                 drawCircle(
-                    color = AgentWhite.copy(alpha = if (active) 0.72f else 0.26f),
-                    radius = 1.dp.toPx(),
+                    color = AgentWhite.copy(alpha = if (active) 0.58f else 0.24f),
+                    radius = 1.2.dp.toPx(),
                     center = center,
                 )
             },
-    )
+        color = AgentPanel.copy(alpha = 0.92f),
+        contentColor = AgentWhite,
+        shape = CircleShape,
+        border = BorderStroke(1.dp, Color(0xFF68C8FF).copy(alpha = if (active) 0.58f else 0.2f)),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = "AI",
+                color = AgentWhite,
+                fontSize = 13.sp,
+                lineHeight = 15.sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+            )
+        }
+    }
 }
 
 @Composable
