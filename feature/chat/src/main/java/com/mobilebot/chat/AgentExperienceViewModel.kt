@@ -1761,13 +1761,21 @@ class AgentExperienceViewModel
             values: List<AgentTaskLog>,
         ): List<AgentTaskLog> {
             if (values.isEmpty()) return existing
-            return values.fold(existing) { rows, value ->
+            val merged = values.fold(existing) { rows, value ->
                 if (rows.lastOrNull()?.text == value.text || rows.any { it.text == value.text && it.timeText == value.timeText }) {
                     rows
                 } else {
-                    (rows + value).takeLast(MAX_TASK_LOGS)
+                    rows + value
                 }
             }
+            return merged
+                .mapIndexed { index, row -> index to row }
+                .sortedWith(
+                    compareBy<Pair<Int, AgentTaskLog>> { (_, row) -> row.timeText ?: "99/99 99:99" }
+                        .thenBy { (index, _) -> index },
+                )
+                .map { (_, row) -> row }
+                .takeLast(MAX_TASK_LOGS)
         }
 
         private fun appendTrace(existing: List<String>, value: String): List<String> =
