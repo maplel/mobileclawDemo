@@ -1,6 +1,7 @@
 package com.mobilebot.chat
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -1694,12 +1695,10 @@ private fun SidebarTaskCard(
                     modifier = Modifier.weight(1f),
                 )
                 if (task.isPinned) {
-                    Text(
-                        text = "置顶",
-                        color = Color(0xFF68C8FF),
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.Black,
+                    PinIndicator(
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(16.dp),
                     )
                 }
             }
@@ -1719,6 +1718,42 @@ private fun SidebarTaskCard(
                 maxLines = 1,
             )
         }
+    }
+}
+
+@Composable
+private fun PinIndicator(
+    modifier: Modifier = Modifier,
+) {
+    val color = Color(0xFF68C8FF)
+    Canvas(modifier = modifier) {
+        val strokeWidth = 1.6.dp.toPx()
+        val headRadius = 2.6.dp.toPx()
+        val head = Offset(size.width * 0.36f, size.height * 0.26f)
+        val shoulder = Offset(size.width * 0.68f, size.height * 0.56f)
+        val point = Offset(size.width * 0.30f, size.height * 0.86f)
+        drawCircle(color = color, radius = headRadius, center = head)
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.46f, size.height * 0.34f),
+            end = shoulder,
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.50f, size.height * 0.52f),
+            end = Offset(size.width * 0.26f, size.height * 0.66f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.54f, size.height * 0.60f),
+            end = point,
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
