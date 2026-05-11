@@ -55,7 +55,8 @@ class SystemRuntime
                 "receive_sms" -> waitForSms(params)
                 "dial_phone", "phone_call" -> dialPhone(params)
                 "call_log" -> ok("Call log returned", "calls" to callLog.toList())
-                "notification", "reminder", "long_reminder" -> notification(params)
+                "notification" -> notification(params)
+                "reminder", "long_reminder" -> reminder(params, normalized)
                 "location" -> location(params)
                 "contacts" -> contacts(params)
                 "social_graph" -> socialGraph()
@@ -223,6 +224,49 @@ class SystemRuntime
                     "postedAt" to System.currentTimeMillis(),
                 ),
             )
+        }
+
+        private fun reminder(
+            params: JSONObject,
+            action: String,
+        ): SystemRuntimeResult {
+            val title = params.optString("title").ifBlank { params.optString("name").ifBlank { "提醒" } }
+            val body = params.optString("message").ifBlank { params.optString("body") }
+            val scheduledFor = reminderTimeText(params, title, body)
+            val item = mapOf(
+                "id" to "reminder-${System.currentTimeMillis()}",
+                "type" to if (action == "long_reminder") "long_reminder" else "reminder",
+                "title" to title,
+                "body" to body,
+                "scheduledFor" to scheduledFor,
+                "status" to "scheduled",
+                "createdAt" to System.currentTimeMillis(),
+            )
+            return ok("Long reminder created: $title", "reminder" to item)
+        }
+
+        private fun reminderTimeText(
+            params: JSONObject,
+            title: String,
+            body: String,
+        ): String {
+            val explicit = firstText(
+                params,
+                "scheduledFor",
+                "scheduledAt",
+                "dateTime",
+                "datetime",
+                "time",
+                "at",
+                "triggerAt",
+                "triggerTime",
+            )
+            if (explicit.isNotBlank()) return explicit
+            val text = "$title $body"
+            return Regex("""(?:\d{1,2}/\d{1,2}\s+)?\d{1,2}:\d{2}""")
+                .find(text)
+                ?.value
+                ?: "按计划时间"
         }
 
         private fun payment(params: JSONObject): SystemRuntimeResult {

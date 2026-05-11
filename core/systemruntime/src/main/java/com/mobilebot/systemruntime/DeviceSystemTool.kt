@@ -24,11 +24,11 @@ class DeviceSystemTool
               "properties": {
                 "action": {
                   "type": "string",
-                  "description": "One of: send_sms, receive_sms, sms, dial_phone, call_log, notification, reminder, location, contacts, social_graph, device_state, memory_read, service_call, mcp_call, payment, accounting."
+                  "description": "One of: send_sms, receive_sms, sms, dial_phone, call_log, notification, reminder, long_reminder, location, contacts, social_graph, device_state, memory_read, service_call, mcp_call, payment, accounting."
                 },
                 "params": {
                   "type": "object",
-                  "description": "Action-specific parameters"
+                  "description": "Action-specific parameters. For reminder or long_reminder, include title, body/message, and scheduledFor or scheduledAt when the trigger time is known."
                 }
               },
               "required": ["action"]
