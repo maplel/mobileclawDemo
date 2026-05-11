@@ -296,6 +296,7 @@ private fun BlueprintDeck(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
+                    BlueprintPartyAvatar("NT")
                     frame.participants.forEach { participant ->
                         BlueprintPartyAvatar(participant.label)
                     }
