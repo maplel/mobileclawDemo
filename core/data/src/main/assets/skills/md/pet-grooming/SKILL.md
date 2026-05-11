@@ -125,7 +125,7 @@ Use the same expected fee from the pet salon search result for payment and accou
 
 For a confirmed 9:00 PetSmart appointment, use 8:30 as the normal home pickup time for Driver. Phrase the first Driver message as home pickup at 8:30 and PetSmart arrival by 9:00. Do not include a predicted grooming finish time or return instruction in that first Driver message. Do not ask Driver to arrive at Y's home at 9:00, because that would miss the appointment start.
 
-For an accepted afternoon bath-only slot after 17:00, use 16:30 as the normal home pickup time for Driver. Phrase the first Driver message as home pickup at 16:30 and PetSmart arrival by 17:00. Do not reuse the 8:30/9:00 timing after Y selects the afternoon slot.
+For an accepted afternoon bath-only slot after 17:00, use 16:30 as the normal home pickup time for Driver. Phrase the first Driver message as `16:30 到家接 Kylin，17:00 前送到 PetSmart`. Do not write only `下午5点前到家接`, and do not reuse the 8:30/9:00 timing after Y selects the afternoon slot.
 
 Do not ask Y whether to create routine reminders. Create the normal departure and return reminders autonomously after the relevant times are known, then continue to the next expected SMS signal.
 

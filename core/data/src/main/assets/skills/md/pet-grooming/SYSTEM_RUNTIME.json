@@ -141,6 +141,12 @@
     },
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["下午5点前", "下午五点前", "17:00前", "17 点前", "5点前", "五点前", "下午5点到家", "下午五点到家"],
+      "message": "短信暂未发送：下午档 Driver 首段接送时间必须明确为 16:30 到家接 Kylin，17:00 前送到 PetSmart。",
+      "instruction": "重新发送给 Driver 的短信：16:30 到家接 Kylin，17:00 前送到 PetSmart。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "messageKeywords": ["Y您好", "Y 您好", "Y你好", "Y 你好"],
       "message": "短信暂未发送：这条短信是发给 Driver 的，称呼不能写用户名。",
       "instruction": "重新发送给 Driver 的短信：开头用“司机您好”或“您好”，只说明 8:30 到浦东家中接 Kylin，并于 9:00 前送到 PetSmart。"
