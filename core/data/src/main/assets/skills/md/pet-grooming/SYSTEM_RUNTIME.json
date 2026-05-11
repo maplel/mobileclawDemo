@@ -161,13 +161,22 @@
     },
     {
       "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": ["确认下午", "确认明天下午", "确认周日下午", "确认下午5", "确认下午五", "确认17:00", "确认 17:00", "约下午5", "约下午五", "预约下午5", "预约下午五", "下午5点预约", "下午五点预约", "book afternoon", "book the afternoon", "confirm afternoon", "confirm the afternoon", "book 17:00", "confirm 17:00"],
+      "priority": 180,
+      "eventType": "petsmart_booking_confirmed",
+      "reply": "好的，Kylin 的洗澡预约已确认，下午五点开始。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
       "keywords": ["booking confirmation", "confirming", "confirm the booking", "confirm booking", "confirmed", "book the", "book kylin", "kylin booked", "预约确认", "确认预约", "确认明天", "确认本周日", "确认周日", "确认9点", "确认上午9点"],
+      "priority": 120,
       "eventType": "petsmart_booking_confirmed",
       "reply": "好的，Kylin 的洗护预约已确认，上午九点开始。"
     },
     {
       "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
       "keywords": ["after 5", "5 pm", "17:00", "five", "bath only", "下午五", "下午5", "5点", "5点后", "5点以后", "只洗澡"],
+      "excludeKeywords": ["确认下午", "确认明天下午", "确认周日下午", "确认17:00", "确认预约", "book the afternoon", "confirm afternoon", "confirm the afternoon"],
       "priority": 80,
       "eventType": "petsmart_afternoon_bath_only",
       "reply": "下午五点以后可以约，只能洗澡，不含除毛。",

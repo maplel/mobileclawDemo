@@ -232,7 +232,8 @@ sealed class ScenarioDecisionIntent(
         override fun agentText(rawText: String): String =
             """
             $command
-            NEXT_OPERATION: Confirm the afternoon bath-only slot with PetSmart, wait for PetSmart's booking confirmation SMS, then coordinate Driver around that selected afternoon slot. Do not ask Y to confirm the same option again.
+            FINAL_SELECTION: Y has accepted the afternoon bath-only PetSmart slot. This is not another availability question.
+            NEXT_OPERATION: Do not show another action prompt for the afternoon tradeoff. Send PetSmart a confirmation SMS that clearly says to confirm the afternoon bath-only booking for Kylin after 17:00, wait for PetSmart's booking confirmation SMS, then coordinate Driver around that selected afternoon slot. Do not ask Y to confirm the same option again.
             """.trimIndent()
     }
 
