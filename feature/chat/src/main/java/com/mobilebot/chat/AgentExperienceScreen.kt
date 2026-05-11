@@ -246,6 +246,13 @@ private fun TimeHeader(
 private fun BlueprintDeck(
     frame: AgentExperienceFrame,
 ) {
+    val logListState = rememberLazyListState()
+    LaunchedEffect(frame.taskLogs.size) {
+        if (frame.taskLogs.isNotEmpty()) {
+            logListState.animateScrollToItem(frame.taskLogs.lastIndex)
+        }
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -300,6 +307,7 @@ private fun BlueprintDeck(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
+                    state = logListState,
                     contentPadding = PaddingValues(bottom = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(13.dp),
                 ) {
