@@ -162,6 +162,11 @@ class SystemRuntime
                 outboundSmsGuards().firstOrNull { it.appliesTo(to, message) && !it.isSatisfiedBy(smsInbox) }
             }
             if (guard != null) {
+                if (guard.replacementMessage.isNotBlank()) {
+                    val rewritten = JSONObject(params.toString())
+                        .put("message", guard.replacementMessage)
+                    return sendSms(rewritten)
+                }
                 return ok(
                     guard.message,
                     "sms" to mapOf(
@@ -868,6 +873,7 @@ class SystemRuntime
             val untilKeywords: List<String>,
             val message: String,
             val instruction: String,
+            val replacementMessage: String,
         ) {
             fun appliesTo(
                 contact: String,
@@ -1119,6 +1125,7 @@ class SystemRuntime
                             untilKeywords = until?.optStringList("keywords").orEmpty(),
                             message = message,
                             instruction = obj.optString("instruction").ifBlank { message },
+                            replacementMessage = obj.optString("replacementMessage").trim(),
                         ),
                     )
                 }

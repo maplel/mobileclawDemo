@@ -149,13 +149,15 @@
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "messageKeywords": ["下午5点前", "下午五点前", "17:00前", "17 点前", "5点前", "五点前", "5:00前", "5:00 前", "下午5:00前", "下午5:00 前", "4:30", "下午4:30", "下午5点到家", "下午五点到家"],
       "message": "短信暂未发送：下午档 Driver 首段接送时间必须明确为 16:30 到家接 Kylin，17:00 前送到 PetSmart。",
-      "instruction": "重新发送给 Driver 的短信：16:30 到家接 Kylin，17:00 前送到 PetSmart。"
+      "instruction": "重新发送给 Driver 的短信：16:30 到家接 Kylin，17:00 前送到 PetSmart。",
+      "replacementMessage": "司机您好，请明天16:30到家接 Kylin，17:00 前送到 PetSmart。谢谢。"
     },
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "messageKeywords": ["准时送到", "按时送到", "预约时间前送到"],
       "message": "短信暂未发送：Driver 首段接送短信不能只写准时送到，必须明确到达 PetSmart 的时间。",
-      "instruction": "重新发送给 Driver 的短信：16:30 到家接 Kylin，17:00 前送到 PetSmart。"
+      "instruction": "重新发送给 Driver 的短信：16:30 到家接 Kylin，17:00 前送到 PetSmart。",
+      "replacementMessage": "司机您好，请明天16:30到家接 Kylin，17:00 前送到 PetSmart。谢谢。"
     },
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
