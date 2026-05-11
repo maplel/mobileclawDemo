@@ -1395,20 +1395,28 @@ class AgentExperienceViewModel
             )
         }
 
-        private fun displayReminderBody(raw: String): String =
-            if (
-                scenario.scenarioId == "pet-grooming" &&
-                selectedAppointmentIsAfternoon() &&
-                raw.contains("司机") &&
-                raw.contains("PetSmart") &&
-                raw.contains("5:00前")
-            ) {
-                raw
-                    .replace("5:00前送达 PetSmart", "17:00前送达 PetSmart")
-                    .replace("5:00前送到 PetSmart", "17:00前送达 PetSmart")
-            } else {
-                raw
+        private fun displayReminderBody(raw: String): String {
+            if (scenario.scenarioId != "pet-grooming") return raw
+            if (!raw.contains("Kylin") || !raw.contains("PetSmart")) return raw
+            if (!raw.contains("司机") && !raw.contains("Driver")) return raw
+
+            val normalized = raw
+                .replace("5:00前送达 PetSmart", "17:00前送达 PetSmart")
+                .replace("5:00前送到 PetSmart", "17:00前送达 PetSmart")
+
+            return when {
+                selectedAppointmentIsAfternoon() ||
+                    normalized.contains("16:30") ||
+                    normalized.contains("17:00") ->
+                    "16:30 Driver 到家接 Kylin，17:00前送达 PetSmart。"
+                normalized.contains("8:30") ||
+                    normalized.contains("08:30") ||
+                    normalized.contains("9:00") ||
+                    normalized.contains("09:00") ->
+                    "08:30 Driver 到家接 Kylin，09:00前送达 PetSmart。"
+                else -> normalized
             }
+        }
 
         private fun AgentExperienceFrame.withScenarioEventClock(
             tool: String,
