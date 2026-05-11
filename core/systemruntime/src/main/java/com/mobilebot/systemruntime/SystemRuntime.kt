@@ -16,6 +16,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import kotlin.random.Random
 import javax.inject.Inject
@@ -467,7 +468,7 @@ class SystemRuntime
                         .put("arguments", arguments),
                 )
             return try {
-                val response = postJson(service.endpoint, payload)
+                val response = postJsonWithRetry(service.endpoint, payload)
                 val data = parseServiceToolResult(response)
                 rememberSelectedService(data)
                 ok(
@@ -493,7 +494,7 @@ class SystemRuntime
                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 15_000
-                    readTimeout = 30_000
+                    readTimeout = 45_000
                     doOutput = true
                     setRequestProperty("Accept", "application/json, text/event-stream")
                     setRequestProperty("Content-Type", "application/json")
@@ -512,6 +513,30 @@ class SystemRuntime
                     conn.disconnect()
                 }
             }
+
+        private suspend fun postJsonWithRetry(
+            url: String,
+            payload: JSONObject,
+        ): String {
+            var lastError: Exception? = null
+            repeat(SERVICE_CALL_ATTEMPTS) { attempt ->
+                try {
+                    return postJson(url, payload)
+                } catch (e: Exception) {
+                    lastError = e
+                    if (!isRetriableServiceError(e) || attempt == SERVICE_CALL_ATTEMPTS - 1) throw e
+                    delay(SERVICE_CALL_RETRY_DELAY_MS)
+                }
+            }
+            throw lastError ?: IllegalStateException("Service call failed")
+        }
+
+        private fun isRetriableServiceError(error: Exception): Boolean {
+            val message = error.message.orEmpty().lowercase()
+            return error is SocketTimeoutException ||
+                message.contains("timed out") ||
+                message.contains("timeout")
+        }
 
         private fun parseServiceToolResult(response: String): Map<String, Any?> {
             val root = JSONObject(response)
@@ -1220,5 +1245,7 @@ class SystemRuntime
             private const val SYSTEM_RUNTIME_FILE = "SYSTEM_RUNTIME.json"
             private const val SMS_MIN_DELAY_MS = 30_000L
             private const val SMS_MAX_DELAY_MS = 60_000L
+            private const val SERVICE_CALL_ATTEMPTS = 2
+            private const val SERVICE_CALL_RETRY_DELAY_MS = 750L
         }
     }
