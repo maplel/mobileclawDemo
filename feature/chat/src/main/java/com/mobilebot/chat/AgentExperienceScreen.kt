@@ -217,6 +217,7 @@ private fun PhoneFlowCanvas(
             if (frame.activeTaskId != null) {
                 TaskProgressStrip(
                     frame = frame,
+                    onOpenBlueprint = onOpenBlueprint,
                     modifier = Modifier
                         .padding(horizontal = 28.dp)
                         .padding(top = 4.dp, bottom = 2.dp),
@@ -244,17 +245,6 @@ private fun PhoneFlowCanvas(
                     .zIndex(100f),
             )
         }
-        AiWorkFloatingButton(
-            active = frame.busy || frame.taskCards.isNotEmpty() || frame.recentSystemEvents.isNotEmpty(),
-            onClick = onOpenBlueprint,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(
-                    top = if (blueprintOpen) 264.dp else 132.dp,
-                    end = 18.dp,
-                )
-                .zIndex(100f),
-        )
     }
 }
 
@@ -352,7 +342,7 @@ private fun AiWorkFloatingButton(
     )
     Surface(
         modifier = modifier
-            .size(54.dp)
+            .size(36.dp)
             .clickable(onClick = onClick)
             .drawWithContent {
                 drawContent()
@@ -377,12 +367,12 @@ private fun AiWorkFloatingButton(
                 )
                 drawCircle(
                     color = baseColor.copy(alpha = if (active) 0.96f else 0.54f),
-                    radius = 3.dp.toPx(),
+                    radius = 2.2.dp.toPx(),
                     center = dot,
                 )
                 drawCircle(
                     color = AgentWhite.copy(alpha = if (active) 0.58f else 0.24f),
-                    radius = 1.2.dp.toPx(),
+                    radius = 1.dp.toPx(),
                     center = center,
                 )
             },
@@ -395,8 +385,8 @@ private fun AiWorkFloatingButton(
             Text(
                 text = "AI",
                 color = AgentWhite,
-                fontSize = 13.sp,
-                lineHeight = 15.sp,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
                 fontWeight = FontWeight.Black,
                 maxLines = 1,
             )
@@ -1067,6 +1057,7 @@ private fun positiveModulo(value: Float, modulus: Float): Float =
 @Composable
 private fun TaskProgressStrip(
     frame: AgentExperienceFrame,
+    onOpenBlueprint: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val progress = frame.progressLine
@@ -1102,12 +1093,9 @@ private fun TaskProgressStrip(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = "${progress.completed}/${progress.total.coerceAtLeast(1)}",
-                color = AgentWhite,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
+            AiWorkFloatingButton(
+                active = frame.busy || frame.taskCards.isNotEmpty() || frame.recentSystemEvents.isNotEmpty(),
+                onClick = onOpenBlueprint,
             )
         }
     }
