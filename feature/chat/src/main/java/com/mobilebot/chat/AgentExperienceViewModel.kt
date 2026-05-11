@@ -44,6 +44,7 @@ class AgentExperienceViewModel
         private var latestScenarioDecisionIntent: ScenarioDecisionIntent? = null
         private var pendingSelectedActionLabel: String? = null
         private var lastGroomingPaymentAmount: String? = null
+        private var awaitingInitialPrecheckDecision = false
         private val groomingMilestones = mutableSetOf<GroomingMilestone>()
 
         private val scenario = AgentScenarioConfig(
@@ -88,7 +89,7 @@ class AgentExperienceViewModel
             viewModelScope.launch {
                 delay(AUTO_TRIGGER_DELAY_MS)
                 if (!_frame.value.hasStarted && !_frame.value.busy) {
-                    startScenario(showUserBubble = false)
+                    startScenario()
                 }
             }
             viewModelScope.launch {
@@ -100,10 +101,6 @@ class AgentExperienceViewModel
         }
 
         fun startScenario() {
-            startScenario(showUserBubble = true)
-        }
-
-        private fun startScenario(showUserBubble: Boolean) {
             if (_frame.value.busy) return
             if (_frame.value.hasStarted && _frame.value.error == null && _frame.value.finalSummary == null) return
             val runChatId = "run-${scenario.scenarioId}-${UUID.randomUUID().toString().take(8)}"
@@ -113,49 +110,40 @@ class AgentExperienceViewModel
             latestScenarioDecisionIntent = null
             pendingSelectedActionLabel = null
             lastGroomingPaymentAmount = null
+            awaitingInitialPrecheckDecision = true
             groomingMilestones.clear()
-            val triggerText = buildScenarioTriggerText(scenarioClock)
             val baseFrame = AgentExperienceFrame.initial(scenario).withClock(scenarioClock)
-            val openingItems =
-                if (showUserBubble) {
-                    baseFrame.conversationItems + AgentConversationItem(
-                        id = nextId("conversation"),
-                        role = AgentConversationRole.USER,
-                        text = "OK",
-                    )
-                } else {
-                    baseFrame.conversationItems
-                }
+            val precheckPrompt = DecisionPrompt(
+                text = "明天周日了，还是照常给麒麟约洗澡么？",
+                actions = listOf(
+                    ActionButton("好的", "USER_INTENT:pet_grooming.keep_current_week"),
+                    ActionButton("改天再说", "USER_INTENT:pet_grooming.defer_current_week"),
+                ),
+            )
             _frame.value = baseFrame.copy(
-                statusLabel = "Starting",
-                busy = true,
+                statusLabel = "Waiting for decision",
+                busy = false,
                 hasStarted = true,
-                conversationItems = openingItems,
-                taskLogs = listOf(
-                    AgentTaskLog(
-                        id = nextId("task"),
-                        timeText = blueprintTimeText(scenarioClock),
-                        text = "创建麒麟日常洗护任务。",
-                    ),
+                decisionPrompt = precheckPrompt,
+                conversationItems = baseFrame.conversationItems + AgentConversationItem(
+                    id = nextId("conversation"),
+                    role = AgentConversationRole.AGENT,
+                    text = precheckPrompt.text,
                 ),
                 progressLine = AgentProgressLine(
-                    label = "Starting",
-                    detail = "Preparing the coordination flow",
+                    label = "Waiting",
+                    detail = "User decision required",
                 ),
                 timeline = listOf(
                     AgentTimelineEvent(
-                        id = nextId("run"),
-                        title = "Workflow started",
-                        detail = "The agent is coordinating Kylin's grooming flow.",
-                        status = AgentTimelineStatus.RUNNING,
+                        id = nextId("decision"),
+                        title = "Decision point",
+                        detail = precheckPrompt.text,
+                        status = AgentTimelineStatus.BLOCKED,
                     ),
                 ),
-                debugTrace = listOf("user -> ${triggerText.lineSequence().first()}"),
+                debugTrace = listOf("precheck -> ${precheckPrompt.text}"),
             )
-
-            viewModelScope.launch {
-                runAgentTurn(runChatId, triggerText)
-            }
         }
 
         fun chooseDecision(action: ActionButton) {
@@ -234,10 +222,26 @@ class AgentExperienceViewModel
                         rawText = rawText,
                     ),
                 )
+                val initialPrecheckDecision = awaitingInitialPrecheckDecision
+                awaitingInitialPrecheckDecision = false
                 latestScenarioDecisionIntent = normalized.intent
                 _frame.update {
+                    val initialTaskLog =
+                        if (initialPrecheckDecision &&
+                            normalized.intent == ScenarioDecisionIntent.PetGroomingKeepCurrentWeek
+                        ) {
+                            AgentTaskLog(
+                                id = nextId("task"),
+                                timeText = blueprintTimeText(scenarioClock),
+                                text = "创建麒麟日常洗护任务。",
+                            )
+                        } else {
+                            null
+                        }
                     it.copy(
                         statusLabel = "Resuming",
+                        taskLogs = initialTaskLog?.let { taskLog -> appendTaskLogs(it.taskLogs, listOf(taskLog)) }
+                            ?: it.taskLogs,
                         progressLine = it.progressLine.copy(
                             label = "Resuming",
                             detail = displayText,
@@ -248,7 +252,18 @@ class AgentExperienceViewModel
                         ),
                     )
                 }
-                runAgentTurn(chatId, normalized.agentText)
+                val agentText =
+                    if (initialPrecheckDecision) {
+                        """
+                            ${buildScenarioTriggerText(scenarioClock)}
+
+                            Y already answered the weekly precheck decision. Authoritative decision: ${normalized.agentText}
+                            Do not ask the weekly precheck question again. If Y keeps this week, continue booking and coordination from that decision. If Y defers this week, acknowledge briefly and stop this run without contacting PetSmart or Driver.
+                        """.trimIndent()
+                    } else {
+                        normalized.agentText
+                    }
+                runAgentTurn(chatId, agentText)
             }
         }
 
@@ -432,7 +447,7 @@ class AgentExperienceViewModel
                 deferredRetriggerInProgress = false
                 delay(AUTO_TRIGGER_DELAY_MS)
                 if (!_frame.value.hasStarted && !_frame.value.busy) {
-                    startScenario(showUserBubble = false)
+                    startScenario()
                 }
             }
         }
