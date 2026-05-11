@@ -337,7 +337,7 @@
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
       "keywords": ["Harbor Paws", "harbor-paws-salon", "13:30", "14:00"],
-      "excludeKeywords": ["接回", "去接", "回家", "送回", "到家", "home"],
+      "excludeKeywords": ["接回", "去接", "回家", "送回", "home"],
       "priority": 160,
       "eventType": "driver_home_pickup_confirmed",
       "reply": "收到，我{pickup_time}来接 Kylin，会按预约时间前送到 Harbor Paws Salon。"
