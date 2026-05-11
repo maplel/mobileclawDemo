@@ -1333,7 +1333,9 @@ class AgentExperienceViewModel
                 raw.contains("PetSmart") &&
                 raw.contains("5:00前")
             ) {
-                raw.replace("5:00前送达 PetSmart", "17:00前送达 PetSmart")
+                raw
+                    .replace("5:00前送达 PetSmart", "17:00前送达 PetSmart")
+                    .replace("5:00前送到 PetSmart", "17:00前送达 PetSmart")
             } else {
                 raw
             }
