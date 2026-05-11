@@ -45,6 +45,7 @@ class AgentExperienceViewModel
         private var pendingSelectedActionLabel: String? = null
         private var lastGroomingPaymentAmount: String? = null
         private var awaitingInitialPrecheckDecision = false
+        private var activeGroomingDate = INITIAL_SCENARIO_CLOCK.toLocalDate().plusDays(1)
         private val groomingMilestones = mutableSetOf<GroomingMilestone>()
 
         private val scenario = AgentScenarioConfig(
@@ -60,7 +61,7 @@ class AgentExperienceViewModel
             ),
             triggerText = """
                 Start the `pet-grooming` scenario skill as the scheduled Saturday precheck for Kylin's recurring grooming.
-                Current scenario clock: Saturday 2027-04-25 for precheck, with grooming expected on Sunday 2027-04-26. Do not invent another date. Use 2027-04-26 as the payment and accounting date for this run.
+                Use the current scenario clock supplied by the runtime. Treat the next day as the grooming date unless a trusted system result gives a more specific date.
                 All user-facing assistant messages, action candidates, plan titles, plan steps, SMS bodies, reminders, notifications, payment descriptions, and accounting descriptions must be Chinese. Proper nouns such as PetSmart, Driver, Kylin, CNY, and NT may stay as written. Do not write English prose on user-facing surfaces.
                 Invoke `use_skill` with skill_name `pet-grooming`, begin at the weekly precheck decision point, then load user memory, create a concise plan, resolve Y's preferred grooming shop PetSmart through device_system service_call with serviceId `pet_salon_search` and query `PetSmart`, consider another shop only if PetSmart cannot satisfy the requested timing or service scope, use system_send_sms and system_wait_for_sms for SMS conversations, and use device_system for remaining phone and OS capabilities.
                 After Y keeps the appointment, call device_system service_call with serviceId `pet_salon_search` and action `get_pet_shop_detail` before sending any SMS to PetSmart. Use the service result for shop identity, address, contact details, service items, and published prices. Kylin is an extra-large Bernese Mountain Dog; use the published service price for Kylin's selected size and service scope as the expected fee for payment/accounting. Do not use full grooming/styling price, small-dog pricing, or pickup coordination fees unless the selected scope changes. Confirm available times, final service scope, and booking status by SMS with PetSmart. Never ask PetSmart for final price in the normal path, and do not include prices, totals, fee details, or CNY in normal PetSmart SMS.
@@ -68,7 +69,7 @@ class AgentExperienceViewModel
                 A PetSmart message that a time is available is not the final booking confirmation. After Y chooses the 9:00 option, the next operational step is only: send PetSmart a confirmation SMS for that slot, then call system_wait_for_sms for PetSmart's booking confirmation. Do not call system_send_sms for Driver until PetSmart's inbound booking-confirmed SMS exists in history.
                 Do not resolve or message Driver until PetSmart has confirmed the final selected booking slot by inbound SMS. Driver is Y's private driver: for a 9:00 PetSmart appointment, coordinate Driver to pick Kylin up from Y's home at 8:30 and deliver him to PetSmart by 9:00; for an accepted afternoon bath-only slot after 17:00, coordinate Driver to pick Kylin up at exactly 16:30 and deliver him to PetSmart by 17:00. The afternoon first Driver SMS must explicitly say `16:30 到家接 Kylin，17:00 前送到 PetSmart`; do not write `下午5点前到家接`. Do not include a predicted grooming finish time, return pickup time, or home-arrival instruction in this first Driver SMS. After Driver confirms the first pickup plan, do not send Driver another SMS asking for future milestone reports; the next listener must be system_wait_for_sms from Driver for Driver's delivery-to-PetSmart update. Do not wait on PetSmart for arrival or progress until Driver has reported Kylin was delivered to PetSmart. Ask Driver to pick up from PetSmart only after PetSmart says Kylin is finished, ready, or gives a revised pickup time after a delay.
                 After PetSmart confirms the booking, contact Driver directly without asking Y again. Driver SMS is addressed to Driver; start it with `司机您好` or `您好`, never `Y您好` or similar Y-facing greetings.
-                After sending the first Driver SMS, first wait for Driver's home-pickup confirmation using that SMS listener. A reply such as "收到，我8:30来接 Kylin" satisfies only pickup confirmation, not delivery. After Driver confirms the pickup plan, create a long_reminder for the selected next-day departure time (04/26 08:30 for a 9:00 appointment, or 04/26 16:30 for an afternoon 17:00 appointment) with a Chinese title like `麒麟出发洗澡`; this is reminder creation and must not be treated as actual departure. After that, call a second system_wait_for_sms from Driver with context "Driver delivery-to-PetSmart update" and no old watchId. Only an inbound Driver message that says Kylin was delivered, arrived, 到店, 送到, or 送达 satisfies delivery-to-PetSmart.
+                After sending the first Driver SMS, first wait for Driver's home-pickup confirmation using that SMS listener. A reply such as "收到，我8:30来接 Kylin" satisfies only pickup confirmation, not delivery. After Driver confirms the pickup plan, create a long_reminder for the selected next-day departure time with a Chinese title like `麒麟出发洗澡`; this is reminder creation and must not be treated as actual departure. After that, call a second system_wait_for_sms from Driver with context "Driver delivery-to-PetSmart update" and no old watchId. Only an inbound Driver message that says Kylin was delivered, arrived, 到店, 送到, or 送达 satisfies delivery-to-PetSmart.
                 After Y answers a declared decision point, continue through routine downstream actions without asking again: booking confirmation, driver home pickup coordination, reminders, Driver delivery-to-PetSmart monitoring, PetSmart progress/finish monitoring, Driver return coordination, home confirmation, payment, accounting, and final summary. Pause only at declared decision points or real blockers, and finish only after Kylin is confirmed home, payment is complete, and the expense is recorded. Do not ask Y whether to create routine reminders. For home confirmation, send Driver a short SMS asking him to confirm once Kylin is home, then wait on that returned SMS listener. Do not pay before an inbound Driver SMS explicitly confirms home arrival. PetSmart progress and finish updates must be listened from PetSmart, not delegated to Driver.
                 If Y selects a concrete grooming time or service option, treat that as confirmation to proceed with that option. Do not ask for a second confirmation of the same choice.
                 Do not end with a promise to monitor later while the workflow is still open. If the next step is monitoring, immediately call system_wait_for_sms for the next expected PetSmart or Driver signal.
@@ -106,6 +107,7 @@ class AgentExperienceViewModel
             if (_frame.value.hasStarted && _frame.value.error == null && _frame.value.finalSummary == null) return
             val runChatId = "run-${scenario.scenarioId}-${UUID.randomUUID().toString().take(8)}"
             currentChatId = runChatId
+            activeGroomingDate = scenarioClock.toLocalDate().plusDays(1)
             eventCounter = 0
             continuationCount = 0
             latestScenarioDecisionIntent = null
@@ -434,6 +436,8 @@ class AgentExperienceViewModel
         private fun buildScenarioTriggerText(clock: LocalDateTime): String {
             val precheckDate = clock.toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
             val groomingDate = clock.toLocalDate().plusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE)
+            val morningReminder = clock.toLocalDate().plusDays(1).atTime(8, 30).format(BLUEPRINT_TIME_FORMATTER)
+            val afternoonReminder = clock.toLocalDate().plusDays(1).atTime(16, 30).format(BLUEPRINT_TIME_FORMATTER)
             val dayName = scenarioDayName(clock, full = true)
             val groomingDayName = scenarioDayName(clock.plusDays(1), full = true)
             val time = clock.toLocalTime().format(CLOCK_TIME_FORMATTER)
@@ -447,7 +451,7 @@ class AgentExperienceViewModel
                 A PetSmart message that a time is available is not the final booking confirmation. After Y chooses the 9:00 option, the next operational step is only: send PetSmart a confirmation SMS for that slot, then call system_wait_for_sms for PetSmart's booking confirmation. Do not call system_send_sms for Driver until PetSmart's inbound booking-confirmed SMS exists in history.
                 Do not resolve or message Driver until PetSmart has confirmed the final selected booking slot by inbound SMS. Driver is Y's private driver: for a 9:00 PetSmart appointment, coordinate Driver to pick Kylin up from Y's home at 8:30 and deliver him to PetSmart by 9:00; for an accepted afternoon bath-only slot after 17:00, coordinate Driver to pick Kylin up at exactly 16:30 and deliver him to PetSmart by 17:00. The afternoon first Driver SMS must explicitly say `16:30 到家接 Kylin，17:00 前送到 PetSmart`; do not write `下午5点前到家接`. Do not include a predicted grooming finish time, return pickup time, or home-arrival instruction in this first Driver SMS. After Driver confirms the first pickup plan, do not send Driver another SMS asking for future milestone reports; the next listener must be system_wait_for_sms from Driver for Driver's delivery-to-PetSmart update. Do not wait on PetSmart for arrival or progress until Driver has reported Kylin was delivered to PetSmart. Ask Driver to pick up from PetSmart only after PetSmart says Kylin is finished, ready, or gives a revised pickup time after a delay.
                 After PetSmart confirms the booking, contact Driver directly without asking Y again. Driver SMS is addressed to Driver; start it with `司机您好` or `您好`, never `Y您好` or similar Y-facing greetings.
-                After sending the first Driver SMS, first wait for Driver's home-pickup confirmation using that SMS listener. A reply such as "收到，我8:30来接 Kylin" satisfies only pickup confirmation, not delivery. After Driver confirms the pickup plan, create a long_reminder for the selected next-day departure time (04/26 08:30 for a 9:00 appointment, or 04/26 16:30 for an afternoon 17:00 appointment) with a Chinese title like `麒麟出发洗澡`; this is reminder creation and must not be treated as actual departure. After that, call a second system_wait_for_sms from Driver with context "Driver delivery-to-PetSmart update" and no old watchId. Only an inbound Driver message that says Kylin was delivered, arrived, 到店, 送到, or 送达 satisfies delivery-to-PetSmart.
+                After sending the first Driver SMS, first wait for Driver's home-pickup confirmation using that SMS listener. A reply such as "收到，我8:30来接 Kylin" satisfies only pickup confirmation, not delivery. After Driver confirms the pickup plan, create a long_reminder for the selected grooming-day departure time ($morningReminder for a 9:00 appointment, or $afternoonReminder for an afternoon 17:00 appointment) with a Chinese title like `麒麟出发洗澡`; this is reminder creation and must not be treated as actual departure. After that, call a second system_wait_for_sms from Driver with context "Driver delivery-to-PetSmart update" and no old watchId. Only an inbound Driver message that says Kylin was delivered, arrived, 到店, 送到, or 送达 satisfies delivery-to-PetSmart.
                 After Y answers a declared decision point, continue through routine downstream actions without asking again: booking confirmation, driver home pickup coordination, reminders, Driver delivery-to-PetSmart monitoring, PetSmart progress/finish monitoring, Driver return coordination, home confirmation, payment, accounting, and final summary. Pause only at declared decision points or real blockers, and finish only after Kylin is confirmed home, payment is complete, and the expense is recorded. Do not ask Y whether to create routine reminders. For home confirmation, send Driver a short SMS asking him to confirm once Kylin is home, then wait on that returned SMS listener. Do not pay before an inbound Driver SMS explicitly confirms home arrival. PetSmart progress and finish updates must be listened from PetSmart, not delegated to Driver.
                 If Y selects a concrete grooming time or service option, treat that as confirmation to proceed with that option. Do not ask for a second confirmation of the same choice.
                 Do not end with a promise to monitor later while the workflow is still open. If the next step is monitoring, immediately call system_wait_for_sms for the next expected PetSmart or Driver signal.
@@ -461,7 +465,35 @@ class AgentExperienceViewModel
             if (frame.finalSummary.isNullOrBlank()) return null
             if (groomingDeferred(frame)) return null
             if (groomingClosureSatisfied(frame)) return null
-            return GROOMING_CONTINUATION_PROMPT
+            return groomingContinuationPrompt()
+        }
+
+        private fun groomingContinuationPrompt(): String {
+            val paymentDate = activeGroomingDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
+            val morningReminder = activeGroomingDate.atTime(8, 30).format(BLUEPRINT_TIME_FORMATTER)
+            val afternoonReminder = activeGroomingDate.atTime(16, 30).format(BLUEPRINT_TIME_FORMATTER)
+            return """
+                Continue the pet-grooming workflow from the next missing operational milestone. The previous assistant answer stopped before closure.
+                Do not summarize, audit, or explain the history in prose. Start by calling the next needed tool.
+                All user-facing assistant messages, action candidates, plan titles, plan steps, SMS bodies, reminders, notifications, payment descriptions, and accounting descriptions must be Chinese. Proper nouns such as PetSmart, Driver, Kylin, CNY, and NT may stay as written. Do not write English prose on user-facing surfaces.
+                Continue in this order, choosing the first missing milestone only: PetSmart booking confirmation; Driver home-pickup confirmation; Driver delivery-to-PetSmart update from Driver; PetSmart arrival/progress/finish update; Driver pickup-from-PetSmart and return update; Driver home confirmation; payment; accounting; one short final status.
+                If Y selected the 9:00 option and PetSmart has not yet replied with a booking-confirmed SMS, the next tool must be a PetSmart confirmation SMS or a PetSmart wait. Do not message Driver in that state.
+                Driver is Y's private driver. For a 9:00 PetSmart appointment, the first Driver leg is 8:30 home pickup, then arrival at PetSmart by 9:00. For an accepted afternoon bath-only slot after 17:00, the first Driver SMS must explicitly say 16:30 home pickup and arrival at PetSmart by 17:00; do not ask Driver to pick up at 17:00 or say only "before 17:00". PetSmart progress, delay, revised pickup time, and finish must come from PetSmart. The second Driver leg is PetSmart to home only after PetSmart reports Kylin is finished, ready, or gives a revised pickup time after a delay.
+                The first Driver SMS must only cover the selected appointment's home pickup and PetSmart delivery. Do not include a predicted grooming finish time, return pickup time, or home-arrival instruction in that first Driver SMS.
+                After PetSmart confirms the selected slot, contact Driver directly without asking Y again. Driver SMS is addressed to Driver; start it with `司机您好` or `您好`, never `Y您好` or similar user-facing greetings.
+                After sending the first Driver SMS, first wait for Driver's home-pickup confirmation using that SMS listener. A reply such as "收到，我8:30来接 Kylin" satisfies only pickup confirmation, not delivery. After Driver confirms the pickup plan, create a long_reminder for the selected grooming-day departure time ($morningReminder for a 9:00 appointment, or $afternoonReminder for an afternoon 17:00 appointment) with a Chinese title like `麒麟出发洗澡`; this is reminder creation and must not be treated as actual departure. After that, call a second system_wait_for_sms from Driver with context "Driver delivery-to-PetSmart update" and no old watchId. Only an inbound Driver message that says Kylin was delivered, arrived, 到店, 送到, or 送达 satisfies delivery-to-PetSmart.
+                After Driver confirms the first pickup plan, do not send Driver another SMS asking for future milestone reports. For Driver delivery-to-PetSmart update, call system_wait_for_sms with Driver as the sender. Do not wait on PetSmart for arrival or progress until Driver has reported Kylin was delivered to PetSmart.
+                For the normal selected scope, use the pet salon search service's published price for Kylin's extra-large Bernese Mountain Dog size and selected bath/de-shedding scope. Do not use small-dog pricing, full grooming/styling pricing, or pickup coordination fees unless Y or PetSmart explicitly changes the scope.
+                Do not include prices, totals, fee details, or CNY in normal outbound PetSmart SMS. PetSmart SMS should only confirm time, service scope, and booking status unless there is an abnormal price issue.
+                For payment and accounting date, use $paymentDate for this run. Do not use the phone's real current year.
+                If payment is already completed but no expense has been recorded, the next tool must be device_system with action "accounting" for PetSmart, the same amount used for payment from the published service result, date $paymentDate, and a Chinese description for Kylin's grooming.
+                A Driver promise to return Kylin later is not home confirmation. Do not call system_wait_for_sms for home confirmation until after Driver has been told to bring Kylin home or has reported Kylin is on the way home.
+                When home confirmation is the next missing milestone, send Driver a short SMS asking him to reply once Kylin is home, then call system_wait_for_sms with the returned watchId. Do not pay or account until that inbound Driver SMS explicitly says Kylin is home.
+                Do not ask Y whether to create routine reminders, and do not stop at a routine reminder question. Create routine reminders autonomously when useful, then continue to the next SMS signal.
+                If payment or accounting already happened before Driver home confirmation, still wait for Driver home confirmation before final status.
+                If a message was sent and no matching reply was received, call system_wait_for_sms for that contact.
+                Ask Y only for a declared decision point, a material time/service tradeoff, safety issue, unusual fee, failed payment, or unclear instruction.
+            """.trimIndent()
         }
 
         private fun groomingDeferred(frame: AgentExperienceFrame): Boolean {
@@ -1173,12 +1205,6 @@ class AgentExperienceViewModel
 
         private fun blueprintTimeText(clock: LocalDateTime): String =
             clock.format(BLUEPRINT_TIME_FORMATTER)
-
-        private fun blueprintTimeFor(eventIndex: Int): String =
-            BLUEPRINT_TIMES.getOrElse(eventIndex) {
-                val minute = 30 + eventIndex
-                if (minute < 60) "04/25 18:${minute.toString().padStart(2, '0')}" else "04/26 20:01"
-            }
 
         private fun serviceTaskLogText(data: JSONObject?): String {
             val serviceId = data?.optString("serviceId").orEmpty()
@@ -1975,53 +2001,6 @@ class AgentExperienceViewModel
                 "Wednesday" to "Wed",
                 "Thursday" to "Thu",
                 "Friday" to "Fri",
-            )
-            private val GROOMING_CONTINUATION_PROMPT = """
-                Continue the pet-grooming workflow from the next missing operational milestone. The previous assistant answer stopped before closure.
-                Do not summarize, audit, or explain the history in prose. Start by calling the next needed tool.
-                All user-facing assistant messages, action candidates, plan titles, plan steps, SMS bodies, reminders, notifications, payment descriptions, and accounting descriptions must be Chinese. Proper nouns such as PetSmart, Driver, Kylin, CNY, and NT may stay as written. Do not write English prose on user-facing surfaces.
-                Continue in this order, choosing the first missing milestone only: PetSmart booking confirmation; Driver home-pickup confirmation; Driver delivery-to-PetSmart update from Driver; PetSmart arrival/progress/finish update; Driver pickup-from-PetSmart and return update; Driver home confirmation; payment; accounting; one short final status.
-                If Y selected the 9:00 option and PetSmart has not yet replied with a booking-confirmed SMS, the next tool must be a PetSmart confirmation SMS or a PetSmart wait. Do not message Driver in that state.
-                Driver is Y's private driver. For a 9:00 PetSmart appointment, the first Driver leg is 8:30 home pickup, then arrival at PetSmart by 9:00. For an accepted afternoon bath-only slot after 17:00, the first Driver SMS must explicitly say 16:30 home pickup and arrival at PetSmart by 17:00; do not ask Driver to pick up at 17:00 or say only "before 17:00". PetSmart progress, delay, revised pickup time, and finish must come from PetSmart. The second Driver leg is PetSmart to home only after PetSmart reports Kylin is finished, ready, or gives a revised pickup time after a delay.
-                The first Driver SMS must only cover the selected appointment's home pickup and PetSmart delivery. Do not include a predicted grooming finish time, return pickup time, or home-arrival instruction in that first Driver SMS.
-                After PetSmart confirms the selected slot, contact Driver directly without asking Y again. Driver SMS is addressed to Driver; start it with `司机您好` or `您好`, never `Y您好` or similar user-facing greetings.
-                After sending the first Driver SMS, first wait for Driver's home-pickup confirmation using that SMS listener. A reply such as "收到，我8:30来接 Kylin" satisfies only pickup confirmation, not delivery. After Driver confirms the pickup plan, create a long_reminder for the selected next-day departure time (04/26 08:30 for a 9:00 appointment, or 04/26 16:30 for an afternoon 17:00 appointment) with a Chinese title like `麒麟出发洗澡`; this is reminder creation and must not be treated as actual departure. After that, call a second system_wait_for_sms from Driver with context "Driver delivery-to-PetSmart update" and no old watchId. Only an inbound Driver message that says Kylin was delivered, arrived, 到店, 送到, or 送达 satisfies delivery-to-PetSmart.
-                After Driver confirms the first pickup plan, do not send Driver another SMS asking for future milestone reports. For Driver delivery-to-PetSmart update, call system_wait_for_sms with Driver as the sender. Do not wait on PetSmart for arrival or progress until Driver has reported Kylin was delivered to PetSmart.
-                For the normal selected scope, use the pet salon search service's published price for Kylin's extra-large Bernese Mountain Dog size and selected bath/de-shedding scope. Do not use small-dog pricing, full grooming/styling pricing, or pickup coordination fees unless Y or PetSmart explicitly changes the scope.
-                Do not include prices, totals, fee details, or CNY in normal outbound PetSmart SMS. PetSmart SMS should only confirm time, service scope, and booking status unless there is an abnormal price issue.
-                For payment and accounting date, use 2027-04-26 for this run. Do not use the phone's real current year.
-                If payment is already completed but no expense has been recorded, the next tool must be device_system with action "accounting" for PetSmart, the same amount used for payment from the published service result, date 2027-04-26, and a Chinese description for Kylin's grooming.
-                A Driver promise to return Kylin later is not home confirmation. Do not call system_wait_for_sms for home confirmation until after Driver has been told to bring Kylin home or has reported Kylin is on the way home.
-                When home confirmation is the next missing milestone, send Driver a short SMS asking him to reply once Kylin is home, then call system_wait_for_sms with the returned watchId. Do not pay or account until that inbound Driver SMS explicitly says Kylin is home.
-                Do not ask Y whether to create routine reminders, and do not stop at a routine reminder question. Create routine reminders autonomously when useful, then continue to the next SMS signal.
-                If payment or accounting already happened before Driver home confirmation, still wait for Driver home confirmation before final status.
-                If a message was sent and no matching reply was received, call system_wait_for_sms for that contact.
-                Ask Y only for a declared decision point, a material time/service tradeoff, safety issue, unusual fee, failed payment, or unclear instruction.
-            """.trimIndent()
-            private val BLUEPRINT_TIMES = listOf(
-                "04/25 18:30",
-                "04/25 18:31",
-                "04/25 18:32",
-                "04/25 18:33",
-                "04/25 18:35",
-                "04/25 18:36",
-                "04/25 18:37",
-                "04/25 18:38",
-                "04/25 18:39",
-                "04/25 18:40",
-                "04/26 16:10",
-                "04/26 16:58",
-                "04/26 17:00",
-                "04/26 17:04",
-                "04/26 17:05",
-                "04/26 17:06",
-                "04/26 17:07",
-                "04/26 19:20",
-                "04/26 19:21",
-                "04/26 19:22",
-                "04/26 19:23",
-                "04/26 20:00",
-                "04/26 20:01",
             )
         }
     }

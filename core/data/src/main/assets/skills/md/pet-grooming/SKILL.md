@@ -267,7 +267,7 @@ When Y chooses one of the available times or service scopes, proceed directly wi
 
 After Y approves the chosen time and scope, confirm with the selected grooming shop and wait for the selected grooming shop's booking confirmation SMS. Only then contact Driver with pickup time, destination, and expected return timing.
 
-If Driver confirms, create the departure long reminder immediately, but keep it as a future reminder creation event rather than an actual departure event. Use `device_system` action `long_reminder` with title `麒麟出发洗澡` and scheduledFor `04/26 08:30` for the 9:00 appointment, or `04/26 16:30` for the afternoon 17:00 bath-only appointment.
+If Driver confirms, create the departure long reminder immediately, but keep it as a future reminder creation event rather than an actual departure event. Use `device_system` action `long_reminder` with title `麒麟出发洗澡` and the active grooming date from the runtime: `08:30` for the 9:00 appointment, or `16:30` for the afternoon 17:00 bath-only appointment.
 
 Do not ask Y whether to send the confirmation, contact Driver, create the routine reminder, or add optional calendar items. Those are routine downstream actions after Y has chosen the time and scope. Calendar changes are only user-facing if Y explicitly asks for them.
 
