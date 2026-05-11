@@ -785,7 +785,7 @@ class AgentExperienceViewModel
                                     isTransientGroomingNarration(content)
                                 val visibleBase = base.withPendingSelectedAction()
                                 visibleBase.copy(
-                                    finalSummary = content,
+                                    finalSummary = displayText ?: content,
                                     decisionPrompt = null,
                                     activeActionValue = null,
                                     conversationItems = if (displayText == null) {
@@ -935,8 +935,7 @@ class AgentExperienceViewModel
                         (text.contains("支付") && (text.contains("记账") || text.contains("账务")))
                 ) &&
                 (text.contains("到家") || text.contains("home")) &&
-                (text.contains("kylin") || text.contains("麒麟")) &&
-                (text.contains("petsmart") || text.contains("pet smart"))
+                (text.contains("kylin") || text.contains("麒麟"))
 
         private fun isRoutineReminderQuestion(text: String): Boolean {
             val lower = text.lowercase()
