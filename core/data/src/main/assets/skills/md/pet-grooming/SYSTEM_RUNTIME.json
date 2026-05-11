@@ -374,8 +374,8 @@
     },
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
-      "keywords": ["delivery-to-shop", "已送到 Harbor", "送到 Harbor Paws Salon", "送达 Harbor Paws Salon", "Kylin 已送到 Harbor", "到店"],
-      "excludeKeywords": ["到家接", "来接 Kylin", "接 Kylin", "接kylin", "home pickup", "13:30", "14:00"],
+      "keywords": ["Harbor Paws Salon", "Harbor Paws", "delivery-to-shop", "已送到 Harbor", "送到 Harbor Paws Salon", "送达 Harbor Paws Salon", "Kylin 已送到 Harbor", "到店"],
+      "excludeKeywords": ["PetSmart", "Pet Smart", "到家接", "来接 Kylin", "接 Kylin", "接kylin", "home pickup", "13:30", "14:00"],
       "priority": 170,
       "eventType": "driver_delivered_to_petsmart",
       "reply": "Kylin 已送到 Harbor Paws Salon。"
@@ -396,8 +396,9 @@
     },
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
-      "keywords": ["delivery-to-shop", "delivery-to-petsmart", "已送到 PetSmart", "送到 PetSmart", "送达 PetSmart", "Kylin 已送到 PetSmart", "到店"],
-      "excludeKeywords": ["8:30", "16:30", "17:00", "请到家", "上门接", "接麒麟", "接 Kylin", "接kylin", "到家接"],
+      "keywords": ["PetSmart", "Pet Smart", "delivery-to-shop", "delivery-to-petsmart", "已送到 PetSmart", "送到 PetSmart", "送达 PetSmart", "Kylin 已送到 PetSmart", "到店"],
+      "excludeKeywords": ["Harbor Paws", "8:30", "16:30", "17:00", "请到家", "上门接", "接麒麟", "接 Kylin", "接kylin", "到家接"],
+      "priority": 170,
       "eventType": "driver_delivered_to_petsmart",
       "reply": "Kylin 已送到 PetSmart。"
     },
