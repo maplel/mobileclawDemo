@@ -1152,7 +1152,7 @@ private fun TraceDrawer(trace: List<String>) {
 private fun conversationActions(frame: AgentExperienceFrame): List<ActionButton> =
     when {
         frame.decisionPrompt != null -> frame.decisionPrompt.actions
-        frame.error != null -> listOf(ActionButton("Retry", "Retry"))
+        frame.error != null -> listOf(ActionButton("重试", "Retry"))
         else -> emptyList()
     }
 

@@ -338,6 +338,7 @@ class AgentExperienceViewModel
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Agent experience failed", e)
+                val detail = e.message ?: e.javaClass.simpleName
                 _frame.update {
                     it.withPendingSelectedAction().copy(
                         busy = false,
@@ -351,10 +352,11 @@ class AgentExperienceViewModel
                             total = totalStageCount(it),
                         ),
                         error = e.message ?: e.javaClass.simpleName,
+                        debugTrace = appendTrace(it.debugTrace, "error -> $detail"),
                         timeline = it.timeline + AgentTimelineEvent(
                             id = nextId("error"),
                             title = "Agent error",
-                            detail = e.message ?: e.javaClass.simpleName,
+                            detail = detail,
                             status = AgentTimelineStatus.FAILED,
                         ),
                     )
