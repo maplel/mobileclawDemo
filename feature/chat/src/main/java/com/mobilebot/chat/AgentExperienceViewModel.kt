@@ -1458,7 +1458,9 @@ class AgentExperienceViewModel
             }
 
         private fun isPetSmartBookingConfirmation(body: String): Boolean =
-            body.contains("确认") &&
+            !body.contains("请问") &&
+                !body.contains("是否") &&
+                body.contains("确认") &&
                 (body.contains("预约") ||
                     body.contains("约") ||
                     body.contains("明天") ||
