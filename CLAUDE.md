@@ -111,6 +111,8 @@ core:bridge, core:model — bottom-level, cross-cutting
 | `EventRouter` | `core/domain/event/EventRouter.kt` | Routes external events (collision, calendar, health, smart home) into the agent |
 | `ServiceManager` | `core/domain/service/ServiceManager.kt` | Manages third-party service registration, authorization, and invocation |
 | `UserProfileStore` | `core/domain/profile/UserProfileStore.kt` | Encrypted user data store (insurance, membership, preferences, etc.) |
+| `SystemPromptBuilder` | `core/domain/agent/SystemPromptBuilder.kt` | Builds system prompt with skill catalog, memory digest, and tool definitions |
+| `LlmConfigurator` | `core/domain/LlmConfigurator.kt` | Syncs API key / base URL / model to LLM client before each request |
 
 ### Memory System
 
@@ -197,6 +199,8 @@ Tools implement the `Tool` interface and bind via Hilt `@IntoSet`. Each declares
 Skills defined as SKILL.md files (YAML frontmatter + Markdown body) in `core/data/src/main/assets/skills/md/`. Legacy JSON format in `skills/bundled/` and `skills/scenarios/`. Three sources with priority: Bundled < Cloud < User.
 
 Key frontmatter fields: `name`, `description`, `category`, `allowed-tools`, `context` (inline/fork), `effort`, `risk`, `requires` (permissions, connectivity, apps, minApi), `composes-skills`, `always`, `disable-model-invocation`.
+
+**Eligibility filtering**: `SkillEligibilityChecker` dynamically filters skills based on `requires` and `conditions` at runtime. **Composition**: `composes-skills` allows recursive combination of sub-skills. **Skill sources**: 27 built-in skills across 4 categories (basic, dining/transport, health/shopping, scene orchestration).
 
 27 built-in skills across categories: basic (browser, maps, messaging, contacts, etc.), dining, food-delivery, ride-hailing, navigation, hotel-booking, hospital-appointment, medication-reminder, product-search, schedule-management, expense-tracking, express-delivery, and scenario orchestrations (road-accident-response, travel-abroad).
 

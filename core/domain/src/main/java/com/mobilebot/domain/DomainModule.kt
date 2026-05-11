@@ -20,6 +20,9 @@ import com.mobilebot.domain.tools.SetAlarmTool
 import com.mobilebot.domain.tools.SetTimerTool
 import com.mobilebot.domain.tools.ShareTextTool
 import com.mobilebot.domain.tools.PublishFactTool
+import com.mobilebot.domain.tools.SaveMemoryTool
+import com.mobilebot.domain.tools.RecallMemoriesTool
+import com.mobilebot.domain.tools.DeleteMemoryTool
 import com.mobilebot.domain.tools.SpawnSubtaskTool
 import com.mobilebot.domain.tools.CreateCalendarEventTool
 import com.mobilebot.domain.tools.CreateNotificationTool
@@ -99,6 +102,18 @@ abstract class DomainToolModule {
     @Binds
     @IntoSet
     abstract fun bindPublishFact(tool: PublishFactTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindSaveMemory(tool: SaveMemoryTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindRecallMemories(tool: RecallMemoriesTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindDeleteMemory(tool: DeleteMemoryTool): Tool
 
     @Binds
     @IntoSet
