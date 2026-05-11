@@ -1382,6 +1382,9 @@ class AgentExperienceViewModel
                     } else {
                         LocalDateTime.of(2027, 4, 25, 13, 4)
                     }
+                contact.contains("PetSmart", ignoreCase = true) &&
+                    (body.contains("下午2点") || body.contains("下午两点") || body.contains("14:00") || body.contains("14点")) ->
+                    LocalDateTime.of(2027, 4, 25, 13, 2)
                 contact.contains("PetSmart", ignoreCase = true) && body.contains("9:00") ->
                     LocalDateTime.of(2027, 4, 25, 13, 2)
                 contact.contains("PetSmart", ignoreCase = true) && (body.contains("下午") || body.contains("5点")) ->
