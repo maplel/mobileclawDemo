@@ -344,7 +344,7 @@
     },
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
-      "keywords": ["delivery-to-shop", "delivery to shop", "delivered to shop", "shop arrival", "arrival at shop", "到店", "送到店里", "送达店里"],
+      "keywords": ["Harbor Paws", "harbor-paws-salon", "送到 Harbor", "送达 Harbor", "到 Harbor"],
       "excludeKeywords": ["到家接", "来接 Kylin", "接 Kylin", "接kylin", "home pickup"],
       "priority": 170,
       "eventType": "driver_delivered_to_petsmart",
@@ -352,7 +352,7 @@
     },
     {
       "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
-      "keywords": ["Harbor Paws", "harbor-paws-salon", "16:30", "4:30", "四点半", "pickup from harbor", "pick up kylin at harbor", "去接", "接回来", "接回", "接 Kylin 回家"],
+      "keywords": ["Harbor Paws", "harbor-paws-salon", "16:30", "4:30", "四点半", "pickup from harbor", "pick up kylin at harbor"],
       "excludeKeywords": ["13:30", "14:00", "到家接", "来接 Kylin", "home pickup"],
       "priority": 180,
       "eventType": "driver_return_pickup_confirmed",
