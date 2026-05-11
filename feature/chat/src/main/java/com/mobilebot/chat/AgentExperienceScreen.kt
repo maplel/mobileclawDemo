@@ -611,35 +611,40 @@ private fun SessionArea(
             modifier
         }
 
-    LazyColumn(
+    Column(
         modifier = areaModifier
             .fillMaxWidth()
             .testTag("session_area"),
-        state = listState,
-        contentPadding = PaddingValues(top = 8.dp, bottom = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (frame.taskCards.size > 1) {
-            item {
-                TaskSwitcherRail(
-                    tasks = frame.taskCards,
-                    onSelectTask = onSelectTask,
-                )
+            TaskSwitcherRail(
+                tasks = frame.taskCards,
+                onSelectTask = onSelectTask,
+                modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
+            )
+        }
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            state = listState,
+            contentPadding = PaddingValues(top = 8.dp, bottom = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            items(messages) { message ->
+                ConversationBubble(message)
             }
-        }
-        items(messages) { message ->
-            ConversationBubble(message)
-        }
-        if (actions.isNotEmpty()) {
-            item {
-                ConversationActionRow(
-                    actions = actions,
-                    activeActionValue = frame.activeActionValue,
-                    enabled = !frame.busy,
-                    onAction = { action ->
-                        if (activeDecision) onAction(action) else onStart()
-                    },
-                )
+            if (actions.isNotEmpty()) {
+                item {
+                    ConversationActionRow(
+                        actions = actions,
+                        activeActionValue = frame.activeActionValue,
+                        enabled = !frame.busy,
+                        onAction = { action ->
+                            if (activeDecision) onAction(action) else onStart()
+                        },
+                    )
+                }
             }
         }
     }
@@ -649,9 +654,10 @@ private fun SessionArea(
 private fun TaskSwitcherRail(
     tasks: List<AgentTaskCard>,
     onSelectTask: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -728,7 +734,6 @@ private fun ConversationActionRow(
         }
     }
 }
-
 @Composable
 private fun ActionOptionBubble(
     label: String,
