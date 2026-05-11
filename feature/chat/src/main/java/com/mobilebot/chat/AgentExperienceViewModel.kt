@@ -827,7 +827,14 @@ class AgentExperienceViewModel
                 text.contains("按流程优先级") ||
                 text.contains("首个缺失") ||
                 text.contains("实际属于") ||
-                text.contains("下一步：")
+                text.contains("下一步：") ||
+                text.contains("4:45前送达") ||
+                (
+                    text.contains("预约已确认") &&
+                        text.contains("接下来") &&
+                        text.contains("司机") &&
+                        text.contains("PetSmart")
+                )
 
         private fun offersDeferralAsOption(text: String): Boolean =
             text.contains("`改天再说`") ||
