@@ -29,4 +29,5 @@ dependencies {
     implementation(project(":scenarios:family-shopping"))
     implementation(project(":scenarios:coldchain-delivery"))
     implementation(project(":scenarios:health-supply"))
+    testImplementation(libs.junit)
 }

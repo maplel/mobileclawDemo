@@ -112,15 +112,19 @@ class OneHourScenarioFlow {
         )
 
     private fun handleReminder(event: ReminderFiredEvent): List<OneHourFlowEffect> =
-        listOf(
-            OneHourFlowEffect.ShowSystemLayer(
-                id = event.id,
-                title = event.title,
-                body = event.body,
-                actionLabel = "OK",
-            ),
-            OneHourFlowEffect.UpdateTask(PetGroomingTaskSurface.departureReminderFired()),
-        )
+        if (petCareAccepted) {
+            listOf(
+                OneHourFlowEffect.ShowSystemLayer(
+                    id = event.id,
+                    title = event.title,
+                    body = event.body,
+                    actionLabel = "OK",
+                ),
+                OneHourFlowEffect.UpdateTask(PetGroomingTaskSurface.departureReminderFired()),
+            )
+        } else {
+            emptyList()
+        }
 
     private fun ifPetAccepted(update: ScenarioTaskUpdate): List<OneHourFlowEffect> =
         if (petCareAccepted) listOf(OneHourFlowEffect.UpdateTask(update)) else emptyList()
