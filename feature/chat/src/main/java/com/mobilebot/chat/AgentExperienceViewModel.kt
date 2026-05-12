@@ -8,6 +8,8 @@ import com.mobilebot.data.settings.UserSettingsRepository
 import com.mobilebot.domain.AgentLoop
 import com.mobilebot.domain.ForegroundController
 import com.mobilebot.domain.agent.AgentDecisionAction
+import com.mobilebot.domain.agent.AgentSessionInput
+import com.mobilebot.domain.agent.AgentSessionRoute
 import com.mobilebot.domain.agent.ScenarioDecisionInput
 import com.mobilebot.domain.agent.ScenarioDecisionIntent
 import com.mobilebot.domain.agent.ScenarioDecisionIntentNormalizer
@@ -185,44 +187,71 @@ class AgentExperienceViewModel
         }
 
         fun chooseDecision(action: ActionButton) {
-            if (_frame.value.busy) return
-            if (action.value.startsWith(SCRIPTED_ACTION_PREFIX)) {
-                handleLocalScenarioDecision(
-                    displayText = action.label,
-                    rawText = action.value,
-                    selectedActionValue = action.value,
-                )
-                return
-            }
-            val chatId = currentChatId ?: return
-            continueWithNormalizedDecision(
-                chatId = chatId,
-                displayText = action.label,
-                rawText = action.value,
-                selectedActionValue = action.value,
+            handleSessionInput(
+                AgentSessionInput.ActionSelected(
+                    route = currentSessionRoute(),
+                    action = action.toAgentDecisionAction(),
+                ),
             )
         }
 
         fun submitDecisionText(text: String) {
-            val value = text.trim()
-            if (value.isBlank()) return
-            if (_frame.value.busy) return
-            if (_frame.value.decisionPrompt?.actions.orEmpty().any { it.value.startsWith(SCRIPTED_ACTION_PREFIX) }) {
-                handleLocalScenarioDecision(
-                    displayText = value,
-                    rawText = value,
-                    selectedActionValue = null,
-                )
-                return
-            }
-            val chatId = currentChatId ?: return
-            continueWithNormalizedDecision(
-                chatId = chatId,
-                displayText = value,
-                rawText = value,
-                selectedActionValue = null,
+            handleSessionInput(
+                AgentSessionInput.TextSubmitted(
+                    route = currentSessionRoute(),
+                    text = text,
+                ),
             )
         }
+
+        private fun handleSessionInput(input: AgentSessionInput) {
+            when (input) {
+                is AgentSessionInput.ActionSelected -> {
+                    if (_frame.value.busy) return
+                    val action = input.action
+                    if (action.value.startsWith(SCRIPTED_ACTION_PREFIX)) {
+                        handleLocalScenarioDecision(
+                            displayText = action.label,
+                            rawText = action.value,
+                            selectedActionValue = action.value,
+                        )
+                        return
+                    }
+                    val chatId = input.route.sessionId ?: return
+                    continueWithNormalizedDecision(
+                        chatId = chatId,
+                        displayText = action.label,
+                        rawText = action.value,
+                        selectedActionValue = action.value,
+                    )
+                }
+                is AgentSessionInput.TextSubmitted -> {
+                    val value = input.text.trim()
+                    if (value.isBlank() || _frame.value.busy) return
+                    if (_frame.value.decisionPrompt?.actions.orEmpty().any { it.value.startsWith(SCRIPTED_ACTION_PREFIX) }) {
+                        handleLocalScenarioDecision(
+                            displayText = value,
+                            rawText = value,
+                            selectedActionValue = null,
+                        )
+                        return
+                    }
+                    val chatId = input.route.sessionId ?: return
+                    continueWithNormalizedDecision(
+                        chatId = chatId,
+                        displayText = value,
+                        rawText = value,
+                        selectedActionValue = null,
+                    )
+                }
+            }
+        }
+
+        private fun currentSessionRoute(): AgentSessionRoute =
+            AgentSessionRoute(
+                sessionId = currentChatId,
+                taskId = _frame.value.activeTaskId,
+            )
 
         fun selectTask(taskId: String) {
             val task = taskStates[taskId] ?: return
