@@ -178,6 +178,131 @@ object PetGroomingTaskSurface {
             finalSummary = "已保留原来的 17:00 只洗澡安排。",
         )
 
+    fun driverPickupConfirmation(messageBody: String): PetGroomingTaskUpdate =
+        PetGroomingTaskUpdate(
+            status = PetGroomingSurfaceStatus.RUNNING,
+            subtitle = "司机 13:20 到楼下",
+            conversations = listOf(
+                PetGroomingSurfaceConversation(
+                    PetGroomingSurfaceRole.AGENT,
+                    "司机老陈已经回复 OK，我给你定了 13:20 送 Kylin 下楼的提醒。",
+                ),
+            ),
+            logs = listOf(
+                PetGroomingSurfaceLog("收到 Driver 的短信：$messageBody"),
+                PetGroomingSurfaceLog("创建提醒：送 Kylin 下楼（13:20）。"),
+            ),
+            progress = PetGroomingSurfaceProgress(
+                label = "进行中",
+                detail = "等待 13:20 提醒",
+                completed = 3,
+                total = 7,
+            ),
+        )
+
+    fun driverPickedUpKylin(messageBody: String): PetGroomingTaskUpdate =
+        PetGroomingTaskUpdate(
+            status = PetGroomingSurfaceStatus.RUNNING,
+            subtitle = "Kylin 已上车",
+            conversations = listOf(
+                PetGroomingSurfaceConversation(
+                    PetGroomingSurfaceRole.AGENT,
+                    "老陈已经接到 Kylin，正在去 PetSmart 的路上。",
+                ),
+            ),
+            logs = listOf(
+                PetGroomingSurfaceLog("收到 Driver 的短信：$messageBody"),
+                PetGroomingSurfaceLog("更新状态：Kylin 已上车，前往 PetSmart。"),
+            ),
+            progress = PetGroomingSurfaceProgress(
+                label = "进行中",
+                detail = "前往 PetSmart",
+                completed = 5,
+                total = 7,
+            ),
+        )
+
+    fun driverArrivedPetSmart(messageBody: String): PetGroomingTaskUpdate =
+        PetGroomingTaskUpdate(
+            status = PetGroomingSurfaceStatus.RUNNING,
+            subtitle = "Kylin 已到 PetSmart",
+            conversations = listOf(
+                PetGroomingSurfaceConversation(
+                    PetGroomingSurfaceRole.AGENT,
+                    "老陈已经把 Kylin 送到 PetSmart，店员已接走。",
+                ),
+            ),
+            logs = listOf(
+                PetGroomingSurfaceLog("收到 Driver 的短信：$messageBody"),
+                PetGroomingSurfaceLog("更新状态：Kylin 已到店，等待 PetSmart 服务进度。"),
+            ),
+            progress = PetGroomingSurfaceProgress(
+                label = "进行中",
+                detail = "等待 PetSmart 进度",
+                completed = 6,
+                total = 7,
+            ),
+        )
+
+    fun serviceStarted(messageBody: String): PetGroomingTaskUpdate =
+        PetGroomingTaskUpdate(
+            status = PetGroomingSurfaceStatus.RUNNING,
+            subtitle = "洗澡和去浮毛进行中",
+            conversations = listOf(
+                PetGroomingSurfaceConversation(
+                    PetGroomingSurfaceRole.AGENT,
+                    "PetSmart 确认 Kylin 已开始洗澡和去浮毛，预计 14:45 完成。",
+                ),
+            ),
+            logs = listOf(
+                PetGroomingSurfaceLog("收到 PetSmart 的短信：$messageBody"),
+                PetGroomingSurfaceLog("更新状态：服务已开始，继续等待完成通知。"),
+            ),
+            progress = PetGroomingSurfaceProgress(
+                label = "进行中",
+                detail = "等待完成通知",
+                completed = 6,
+                total = 7,
+            ),
+        )
+
+    fun serviceProgress(messageBody: String): PetGroomingTaskUpdate =
+        PetGroomingTaskUpdate(
+            status = PetGroomingSurfaceStatus.RUNNING,
+            subtitle = "完成时间调整到 15:00",
+            conversations = listOf(
+                PetGroomingSurfaceConversation(
+                    PetGroomingSurfaceRole.AGENT,
+                    "PetSmart 更新了进度：Kylin 去浮毛会多 15 分钟，预计 15:00 左右完成。我会继续等完成通知。",
+                ),
+            ),
+            logs = listOf(
+                PetGroomingSurfaceLog("收到 PetSmart 的短信：$messageBody"),
+                PetGroomingSurfaceLog("更新预计完成时间：15:00 左右。"),
+            ),
+            progress = PetGroomingSurfaceProgress(
+                label = "进行中",
+                detail = "继续监听完成通知",
+                completed = 6,
+                total = 7,
+            ),
+        )
+
+    fun departureReminderFired(): PetGroomingTaskUpdate =
+        PetGroomingTaskUpdate(
+            status = PetGroomingSurfaceStatus.RUNNING,
+            subtitle = "提醒已触发",
+            logs = listOf(
+                PetGroomingSurfaceLog("触发提醒：送 Kylin 下楼。"),
+            ),
+            progress = PetGroomingSurfaceProgress(
+                label = "进行中",
+                detail = "等待司机接到 Kylin",
+                completed = 4,
+                total = 7,
+            ),
+        )
+
     private val PETSMART = PetGroomingSurfaceParticipant(
         id = "petsmart",
         label = "PS",

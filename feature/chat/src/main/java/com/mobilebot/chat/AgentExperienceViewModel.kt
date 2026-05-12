@@ -1439,6 +1439,28 @@ class AgentExperienceViewModel
             return PetGroomingContacts.displayDriverReminderBody(raw)
         }
 
+        private fun applyPetGroomingTaskUpdate(
+            update: com.mobilebot.scenarios.petgrooming.PetGroomingTaskUpdate,
+            timeText: String,
+            activate: Boolean = false,
+        ) {
+            updateTaskState(PetGroomingTaskSurface.TASK_ID, activate = activate) { task ->
+                task.copy(
+                    status = update.status.toAgentStatus(),
+                    updatedTimeText = timeText,
+                    subtitle = update.subtitle,
+                    conversationItems = task.conversationItems + update.conversations.map { it.toConversationItem() },
+                    taskLogs = appendTaskLogs(task.taskLogs, update.logs.toTaskLogs(timeText)),
+                    participants = update.participants?.map { it.toAgentParticipant() } ?: task.participants,
+                    progressLine = update.progress.toProgressLine(),
+                    decisionPrompt = update.decision?.toDecisionPrompt(),
+                    activeActionValue = update.activeActionValue,
+                    timeline = task.timeline + update.timeline.map { it.toTimelineEvent() },
+                    finalSummary = update.finalSummary ?: task.finalSummary,
+                )
+            }
+        }
+
         private fun PetGroomingSurfaceStatus.toAgentStatus(): AgentTimelineStatus =
             when (this) {
                 PetGroomingSurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
@@ -1708,39 +1730,10 @@ class AgentExperienceViewModel
 
         private fun handleDriverPickupConfirmation(event: IncomingSmsEvent) {
             if (!petGroomingAccepted) return
-            updateTaskState(PET_TASK_ID, activate = false) { task ->
-                task.copy(
-                    status = AgentTimelineStatus.RUNNING,
-                    updatedTimeText = blueprintTimeText(scenarioClock),
-                    subtitle = "司机 13:20 到楼下",
-                    conversationItems = appendConversation(
-                        task.conversationItems,
-                        AgentConversationRole.AGENT,
-                        "司机老陈已经回复 OK，我给你定了 13:20 送 Kylin 下楼的提醒。",
-                    ),
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(scenarioClock),
-                                text = "收到 Driver 的短信：${event.body}",
-                            ),
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(scenarioClock),
-                                text = "创建提醒：送 Kylin 下楼（13:20）。",
-                            ),
-                        ),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "进行中",
-                        detail = "等待 13:20 提醒",
-                        completed = 3,
-                        total = 7,
-                    ),
-                )
-            }
+            applyPetGroomingTaskUpdate(
+                update = PetGroomingTaskSurface.driverPickupConfirmation(event.body),
+                timeText = blueprintTimeText(scenarioClock),
+            )
         }
 
         private fun handleEllaShoppingFollowup(event: IncomingSmsEvent) {
@@ -1780,39 +1773,10 @@ class AgentExperienceViewModel
 
         private fun handleDriverPickedUpKylin(event: IncomingSmsEvent) {
             if (!petGroomingAccepted) return
-            updateTaskState(PET_TASK_ID, activate = false) { task ->
-                task.copy(
-                    status = AgentTimelineStatus.RUNNING,
-                    updatedTimeText = blueprintTimeText(event.occurredAt),
-                    subtitle = "Kylin 已上车",
-                    conversationItems = appendConversation(
-                        task.conversationItems,
-                        AgentConversationRole.AGENT,
-                        "老陈已经接到 Kylin，正在去 PetSmart 的路上。",
-                    ),
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "收到 Driver 的短信：${event.body}",
-                            ),
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "更新状态：Kylin 已上车，前往 PetSmart。",
-                            ),
-                        ),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "进行中",
-                        detail = "前往 PetSmart",
-                        completed = 5,
-                        total = 7,
-                    ),
-                )
-            }
+            applyPetGroomingTaskUpdate(
+                update = PetGroomingTaskSurface.driverPickedUpKylin(event.body),
+                timeText = blueprintTimeText(event.occurredAt),
+            )
         }
 
         private fun handleRuntimeNotificationEvent(event: RuntimeNotificationEvent) {
@@ -2046,76 +2010,18 @@ class AgentExperienceViewModel
 
         private fun handleDriverArrivedPetSmart(event: IncomingSmsEvent) {
             if (!petGroomingAccepted) return
-            updateTaskState(PET_TASK_ID, activate = false) { task ->
-                task.copy(
-                    status = AgentTimelineStatus.RUNNING,
-                    updatedTimeText = blueprintTimeText(event.occurredAt),
-                    subtitle = "Kylin 已到 PetSmart",
-                    conversationItems = appendConversation(
-                        task.conversationItems,
-                        AgentConversationRole.AGENT,
-                        "老陈已经把 Kylin 送到 PetSmart，店员已接走。",
-                    ),
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "收到 Driver 的短信：${event.body}",
-                            ),
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "更新状态：Kylin 已到店，等待 PetSmart 服务进度。",
-                            ),
-                        ),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "进行中",
-                        detail = "等待 PetSmart 进度",
-                        completed = 6,
-                        total = 7,
-                    ),
-                )
-            }
+            applyPetGroomingTaskUpdate(
+                update = PetGroomingTaskSurface.driverArrivedPetSmart(event.body),
+                timeText = blueprintTimeText(event.occurredAt),
+            )
         }
 
         private fun handlePetSmartServiceStarted(event: IncomingSmsEvent) {
             if (!petGroomingAccepted) return
-            updateTaskState(PET_TASK_ID, activate = false) { task ->
-                task.copy(
-                    status = AgentTimelineStatus.RUNNING,
-                    updatedTimeText = blueprintTimeText(event.occurredAt),
-                    subtitle = "洗澡和去浮毛进行中",
-                    conversationItems = appendConversation(
-                        task.conversationItems,
-                        AgentConversationRole.AGENT,
-                        "PetSmart 确认 Kylin 已开始洗澡和去浮毛，预计 14:45 完成。",
-                    ),
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "收到 PetSmart 的短信：${event.body}",
-                            ),
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "更新状态：服务已开始，继续等待完成通知。",
-                            ),
-                        ),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "进行中",
-                        detail = "等待完成通知",
-                        completed = 6,
-                        total = 7,
-                    ),
-                )
-            }
+            applyPetGroomingTaskUpdate(
+                update = PetGroomingTaskSurface.serviceStarted(event.body),
+                timeText = blueprintTimeText(event.occurredAt),
+            )
         }
 
         private fun handleEllaShoppingClarify(event: IncomingSmsEvent) {
@@ -2155,39 +2061,10 @@ class AgentExperienceViewModel
 
         private fun handlePetSmartServiceProgress(event: IncomingSmsEvent) {
             if (!petGroomingAccepted) return
-            updateTaskState(PET_TASK_ID, activate = false) { task ->
-                task.copy(
-                    status = AgentTimelineStatus.RUNNING,
-                    updatedTimeText = blueprintTimeText(event.occurredAt),
-                    subtitle = "完成时间调整到 15:00",
-                    conversationItems = appendConversation(
-                        task.conversationItems,
-                        AgentConversationRole.AGENT,
-                        "PetSmart 更新了进度：Kylin 去浮毛会多 15 分钟，预计 15:00 左右完成。我会继续等完成通知。",
-                    ),
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "收到 PetSmart 的短信：${event.body}",
-                            ),
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "更新预计完成时间：15:00 左右。",
-                            ),
-                        ),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "进行中",
-                        detail = "继续监听完成通知",
-                        completed = 6,
-                        total = 7,
-                    ),
-                )
-            }
+            applyPetGroomingTaskUpdate(
+                update = PetGroomingTaskSurface.serviceProgress(event.body),
+                timeText = blueprintTimeText(event.occurredAt),
+            )
         }
 
         private fun handleHealthSupplyCandidate(event: RuntimeNotificationEvent) {
@@ -2302,29 +2179,10 @@ class AgentExperienceViewModel
                     ),
                 )
             }
-            updateTaskState(PET_TASK_ID, activate = false) { task ->
-                task.copy(
-                    status = AgentTimelineStatus.RUNNING,
-                    updatedTimeText = blueprintTimeText(scenarioClock),
-                    subtitle = "提醒已触发",
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(scenarioClock),
-                                text = "触发提醒：送 Kylin 下楼。",
-                            ),
-                        ),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "进行中",
-                        detail = "等待司机接到 Kylin",
-                        completed = 4,
-                        total = 7,
-                    ),
-                )
-            }
+            applyPetGroomingTaskUpdate(
+                update = PetGroomingTaskSurface.departureReminderFired(),
+                timeText = blueprintTimeText(scenarioClock),
+            )
         }
 
         private fun upsertTask(task: AgentTaskState) {
