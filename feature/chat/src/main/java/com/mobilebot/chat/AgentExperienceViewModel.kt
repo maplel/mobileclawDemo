@@ -212,9 +212,8 @@ class AgentExperienceViewModel
             taskStates[_frame.value.activeTaskId]?.let {
                 taskStates[it.id] = _frame.value.captureTaskState(it)
             }
-            val selected = task.copy(sortKey = nextTaskSortKey())
-            taskStates[taskId] = selected
-            _frame.update { selected.applyToFrame(it) }
+            // 查看任务不改变任务活跃顺序，只有真实事件更新才刷新排序。
+            _frame.update { task.applyToFrame(it) }
         }
 
         fun toggleTaskPinned(taskId: String) {
