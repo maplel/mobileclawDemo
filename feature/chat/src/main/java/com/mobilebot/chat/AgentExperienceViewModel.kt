@@ -29,6 +29,13 @@ import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceProgress
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceRole
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceStatus
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingTaskSurface
+import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceConversation
+import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceLog
+import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceParticipant
+import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceProgress
+import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceRole
+import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceStatus
+import com.mobilebot.scenarios.healthsupply.HealthSupplyTaskSurface
 import com.mobilebot.scenarios.petgrooming.PetGroomingContacts
 import com.mobilebot.scenarios.petgrooming.PetGroomingConversationRules
 import com.mobilebot.scenarios.petgrooming.PetGroomingDecisionIntents
@@ -1517,6 +1524,24 @@ class AgentExperienceViewModel
             }
         }
 
+        private fun applyHealthSupplyTaskUpdate(
+            update: com.mobilebot.scenarios.healthsupply.HealthSupplyTaskUpdate,
+            timeText: String,
+            activate: Boolean = false,
+        ) {
+            updateTaskState(HealthSupplyTaskSurface.TASK_ID, activate = activate) { task ->
+                task.copy(
+                    status = update.status.toAgentStatus(),
+                    updatedTimeText = timeText,
+                    subtitle = update.subtitle,
+                    conversationItems = task.conversationItems + update.conversations.map { it.toConversationItem() },
+                    taskLogs = appendTaskLogs(task.taskLogs, update.logs.toHealthSupplyTaskLogs(timeText)),
+                    participants = update.participants?.map { it.toAgentParticipant() } ?: task.participants,
+                    progressLine = update.progress.toProgressLine(),
+                )
+            }
+        }
+
         private fun PetGroomingSurfaceStatus.toAgentStatus(): AgentTimelineStatus =
             when (this) {
                 PetGroomingSurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
@@ -1536,6 +1561,13 @@ class AgentExperienceViewModel
                 ColdchainDeliverySurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
                 ColdchainDeliverySurfaceStatus.DONE -> AgentTimelineStatus.DONE
                 ColdchainDeliverySurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
+            }
+
+        private fun HealthSupplySurfaceStatus.toAgentStatus(): AgentTimelineStatus =
+            when (this) {
+                HealthSupplySurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
+                HealthSupplySurfaceStatus.DONE -> AgentTimelineStatus.DONE
+                HealthSupplySurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
             }
 
         private fun PetGroomingSurfaceConversation.toConversationItem(): AgentConversationItem =
@@ -1568,6 +1600,16 @@ class AgentExperienceViewModel
                 text = text,
             )
 
+        private fun HealthSupplySurfaceConversation.toConversationItem(): AgentConversationItem =
+            AgentConversationItem(
+                id = nextId("conversation"),
+                role = when (role) {
+                    HealthSupplySurfaceRole.AGENT -> AgentConversationRole.AGENT
+                    HealthSupplySurfaceRole.USER -> AgentConversationRole.USER
+                },
+                text = text,
+            )
+
         private fun List<PetGroomingSurfaceLog>.toTaskLogs(timeText: String): List<AgentTaskLog> =
             map {
                 AgentTaskLog(
@@ -1587,6 +1629,15 @@ class AgentExperienceViewModel
             }
 
         private fun List<ColdchainDeliverySurfaceLog>.toColdchainTaskLogs(timeText: String): List<AgentTaskLog> =
+            map {
+                AgentTaskLog(
+                    id = nextId("task"),
+                    timeText = timeText,
+                    text = it.text,
+                )
+            }
+
+        private fun List<HealthSupplySurfaceLog>.toHealthSupplyTaskLogs(timeText: String): List<AgentTaskLog> =
             map {
                 AgentTaskLog(
                     id = nextId("task"),
@@ -1619,7 +1670,23 @@ class AgentExperienceViewModel
                 role = role,
             )
 
+        private fun HealthSupplySurfaceParticipant.toAgentParticipant(): AgentParticipant =
+            AgentParticipant(
+                id = id,
+                label = label,
+                displayName = displayName,
+                role = role,
+            )
+
         private fun PetGroomingSurfaceProgress.toProgressLine(): AgentProgressLine =
+            AgentProgressLine(
+                label = label,
+                detail = detail,
+                completed = completed,
+                total = total,
+            )
+
+        private fun HealthSupplySurfaceProgress.toProgressLine(): AgentProgressLine =
             AgentProgressLine(
                 label = label,
                 detail = detail,
@@ -1910,40 +1977,17 @@ class AgentExperienceViewModel
         }
 
         private fun handlePharmacyRestock(event: RuntimeNotificationEvent) {
+            val seed = HealthSupplyTaskSurface.pharmacyRestock(event.body)
             val task = AgentTaskState(
-                id = HEALTH_TASK_ID,
-                title = "健康补给",
-                subtitle = "常用品补货候选",
-                status = AgentTimelineStatus.RUNNING,
+                id = HealthSupplyTaskSurface.TASK_ID,
+                title = seed.title,
+                subtitle = seed.subtitle,
+                status = seed.status.toAgentStatus(),
                 updatedTimeText = blueprintTimeText(event.occurredAt),
-                conversationItems = listOf(
-                    AgentConversationItem(
-                        id = nextId("conversation"),
-                        role = AgentConversationRole.AGENT,
-                        text = "常买的益生菌补货了，我先放进健康补给任务里，不打断你。",
-                    ),
-                ),
-                taskLogs = listOf(
-                    AgentTaskLog(
-                        id = nextId("task"),
-                        timeText = blueprintTimeText(event.occurredAt),
-                        text = "收到美团买药通知：${event.body}",
-                    ),
-                    AgentTaskLog(
-                        id = nextId("task"),
-                        timeText = blueprintTimeText(event.occurredAt),
-                        text = "新建健康补给任务：益生菌补货候选。",
-                    ),
-                ),
-                participants = listOf(
-                    AgentParticipant("pharmacy-service", "药", "美团买药", "pharmacy_service"),
-                ),
-                progressLine = AgentProgressLine(
-                    label = "进行中",
-                    detail = "等待是否合并配送",
-                    completed = 1,
-                    total = 3,
-                ),
+                conversationItems = seed.conversations.map { it.toConversationItem() },
+                taskLogs = seed.logs.toHealthSupplyTaskLogs(blueprintTimeText(event.occurredAt)),
+                participants = seed.participants.map { it.toAgentParticipant() },
+                progressLine = seed.progress.toProgressLine(),
             )
             upsertTask(task)
         }
@@ -2017,38 +2061,10 @@ class AgentExperienceViewModel
         }
 
         private fun handleHealthSupplyCandidate(event: RuntimeNotificationEvent) {
-            updateTaskState(HEALTH_TASK_ID, activate = false) { task ->
-                task.copy(
-                    updatedTimeText = blueprintTimeText(event.occurredAt),
-                    subtitle = "可与维生素合并配送",
-                    conversationItems = appendConversation(
-                        task.conversationItems,
-                        AgentConversationRole.AGENT,
-                        "健康补给可以和维生素 D 一起配送，我先保留候选，等你有空再确认是否下单。",
-                    ),
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "收到美团买药通知：${event.body}",
-                            ),
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "更新健康补给候选：益生菌和维生素 D 可合并配送。",
-                            ),
-                        ),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "等待",
-                        detail = "低优先级，稍后再问",
-                        completed = 2,
-                        total = 3,
-                    ),
-                )
-            }
+            applyHealthSupplyTaskUpdate(
+                update = HealthSupplyTaskSurface.deliveryCandidate(event.body),
+                timeText = blueprintTimeText(event.occurredAt),
+            )
         }
 
         private fun handleIncomingCallEvent(event: IncomingCallEvent) {
@@ -2489,7 +2505,6 @@ class AgentExperienceViewModel
             private const val TOOL_ROUND_LIMIT_PREFIX = "Stopped: too many tool call rounds"
             private const val SCRIPTED_ACTION_PREFIX = "MULTI:"
             private const val ONE_HOUR_SCENARIO_ID = "one_hour_aio"
-            private const val HEALTH_TASK_ID = "health-supply-live"
             private val INITIAL_SCENARIO_CLOCK: LocalDateTime = LocalDateTime.of(2027, 4, 25, 13, 0)
             private val CLOCK_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
             private val CLOCK_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd/yyyy", Locale.US)

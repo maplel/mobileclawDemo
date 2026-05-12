@@ -37,6 +37,7 @@ dependencies {
     implementation(project(":scenarios:pet-grooming"))
     implementation(project(":scenarios:family-shopping"))
     implementation(project(":scenarios:coldchain-delivery"))
+    implementation(project(":scenarios:health-supply"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
