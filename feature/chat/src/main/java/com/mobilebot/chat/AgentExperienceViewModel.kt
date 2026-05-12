@@ -183,7 +183,11 @@ class AgentExperienceViewModel
         fun chooseDecision(action: ActionButton) {
             if (_frame.value.busy) return
             if (action.value.startsWith(SCRIPTED_ACTION_PREFIX)) {
-                handleScriptedDecision(action)
+                handleLocalScenarioDecision(
+                    displayText = action.label,
+                    rawText = action.value,
+                    selectedActionValue = action.value,
+                )
                 return
             }
             val chatId = currentChatId ?: return
@@ -198,8 +202,16 @@ class AgentExperienceViewModel
         fun submitDecisionText(text: String) {
             val value = text.trim()
             if (value.isBlank()) return
-            val chatId = currentChatId ?: return
             if (_frame.value.busy) return
+            if (_frame.value.decisionPrompt?.actions.orEmpty().any { it.value.startsWith(SCRIPTED_ACTION_PREFIX) }) {
+                handleLocalScenarioDecision(
+                    displayText = value,
+                    rawText = value,
+                    selectedActionValue = null,
+                )
+                return
+            }
+            val chatId = currentChatId ?: return
             continueWithNormalizedDecision(
                 chatId = chatId,
                 displayText = value,
@@ -1690,14 +1702,88 @@ class AgentExperienceViewModel
             upsertTask(task)
         }
 
-        private fun handleScriptedDecision(action: ActionButton) {
-            when (action.value.removePrefix(SCRIPTED_ACTION_PREFIX)) {
-                "pet.accept_14" -> acceptPetSmartOpenSlot(action.label)
-                "pet.keep_17" -> keepOriginalPetSmartSlot(action.label)
+        private fun handleLocalScenarioDecision(
+            displayText: String,
+            rawText: String,
+            selectedActionValue: String?,
+        ) {
+            val prompt = _frame.value.decisionPrompt ?: return
+            if (selectedActionValue != null) {
+                pendingSelectedActionLabel = displayText
+            }
+            _frame.update {
+                it.copy(
+                    statusLabel = "理解中",
+                    busy = true,
+                    decisionPrompt = if (selectedActionValue == null) null else it.decisionPrompt,
+                    activeActionValue = selectedActionValue,
+                    conversationItems = it.conversationItems,
+                    progressLine = it.progressLine.copy(
+                        label = "理解中",
+                        detail = displayText,
+                    ),
+                    debugTrace = appendTrace(it.debugTrace, "local decision -> ${rawText.take(160)}"),
+                )
+            }
+            viewModelScope.launch {
+                val normalized = decisionIntentNormalizer.normalize(
+                    ScenarioDecisionInput(
+                        scenarioId = scenario.scenarioId,
+                        promptText = prompt.text,
+                        presentedActions = prompt.actions,
+                        displayText = displayText,
+                        rawText = rawText,
+                    ),
+                )
+                _frame.update {
+                    it.copy(
+                        debugTrace = appendTrace(
+                            it.debugTrace,
+                            "local intent -> ${normalized.intent.id}${if (normalized.usedFallback) " (fallback)" else ""}",
+                        ),
+                    )
+                }
+                // LLM 只负责识别用户意图，具体执行仍走稳定的场景动作。
+                when (normalized.intent) {
+                    ScenarioDecisionIntent.PetGroomingAcceptOpenSlot -> acceptPetSmartOpenSlot(displayText)
+                    ScenarioDecisionIntent.PetGroomingKeepOriginalSlot -> keepOriginalPetSmartSlot(displayText)
+                    else -> askOpenSlotClarification(displayText)
+                }
+            }
+        }
+
+        private fun askOpenSlotClarification(userText: String) {
+            val prompt = DecisionPrompt(
+                text = "你是想改到 14:00，还是保留原来的 17:00？",
+                actions = listOf(
+                    ActionButton("可以", "${SCRIPTED_ACTION_PREFIX}pet.accept_14"),
+                    ActionButton("不改了", "${SCRIPTED_ACTION_PREFIX}pet.keep_17"),
+                ),
+            )
+            _frame.update {
+                it.copy(
+                    busy = false,
+                    statusLabel = "等待",
+                    decisionPrompt = prompt,
+                    activeActionValue = null,
+                    conversationItems = appendConversation(
+                        appendConversation(it.conversationItems, AgentConversationRole.USER, userText),
+                        AgentConversationRole.AGENT,
+                        prompt.text,
+                    ),
+                    progressLine = AgentProgressLine(
+                        label = "等待",
+                        detail = "等待用户决策",
+                        completed = it.progressLine.completed,
+                        total = it.progressLine.total,
+                    ),
+                    debugTrace = appendTrace(it.debugTrace, "local decision clarification -> $userText"),
+                )
             }
         }
 
         private fun acceptPetSmartOpenSlot(label: String) {
+            pendingSelectedActionLabel = null
             val frame = _frame.value
             val task = taskStates[PET_TASK_ID] ?: return
             val updated = task.copy(
@@ -1753,6 +1839,7 @@ class AgentExperienceViewModel
         }
 
         private fun keepOriginalPetSmartSlot(label: String) {
+            pendingSelectedActionLabel = null
             val frame = _frame.value
             val task = taskStates[PET_TASK_ID] ?: return
             val updated = task.copy(

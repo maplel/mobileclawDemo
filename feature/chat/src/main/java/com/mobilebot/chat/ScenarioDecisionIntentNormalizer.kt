@@ -206,6 +206,18 @@ sealed class ScenarioDecisionIntent(
         meaning = "Y wants to skip or postpone this week's Kylin grooming run.",
     )
 
+    data object PetGroomingAcceptOpenSlot : ScenarioDecisionIntent(
+        id = "pet_grooming.accept_14_open_slot",
+        displayLabel = "可以",
+        meaning = "Y accepts PetSmart's same-day 14:00 grooming plus de-shedding slot and authorizes routine downstream coordination.",
+    )
+
+    data object PetGroomingKeepOriginalSlot : ScenarioDecisionIntent(
+        id = "pet_grooming.keep_17_original_slot",
+        displayLabel = "不改了",
+        meaning = "Y wants to keep the original 17:00 bath-only PetSmart appointment and skip the 14:00 change.",
+    )
+
     data object PetGroomingBookNine : ScenarioDecisionIntent(
         id = "pet_grooming.book_0900",
         displayLabel = "约9点",
@@ -288,6 +300,8 @@ sealed class ScenarioDecisionIntent(
                 "pet-grooming" -> listOf(
                     PetGroomingKeepCurrentWeek,
                     PetGroomingDeferCurrentWeek,
+                    PetGroomingAcceptOpenSlot,
+                    PetGroomingKeepOriginalSlot,
                     PetGroomingBookNine,
                     PetGroomingAskAfternoon,
                     PetGroomingBookAfternoonBathOnly,
