@@ -1,4 +1,4 @@
-package com.mobilebot.chat
+﻿package com.mobilebot.chat
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -10,9 +10,9 @@ import com.mobilebot.domain.ForegroundController
 import com.mobilebot.domain.agent.AgentDecisionAction
 import com.mobilebot.domain.agent.AgentSessionInput
 import com.mobilebot.domain.agent.AgentSessionRoute
-import com.mobilebot.domain.agent.ScenarioDecisionInput
-import com.mobilebot.domain.agent.ScenarioDecisionIntent
-import com.mobilebot.domain.agent.ScenarioDecisionIntentNormalizer
+import com.mobilebot.domain.agent.AgentDecisionInput
+import com.mobilebot.domain.agent.AgentDecisionIntent
+import com.mobilebot.domain.agent.AgentDecisionIntentNormalizer
 import com.mobilebot.domain.interaction.ActionPromptCodec
 import com.mobilebot.domain.todo.TodoListCodec
 import com.mobilebot.systemruntime.CallEndedEvent
@@ -50,7 +50,7 @@ class AgentExperienceViewModel
         private val agent: AgentLoop,
         private val settings: UserSettingsRepository,
         private val foreground: ForegroundController,
-        private val decisionIntentNormalizer: ScenarioDecisionIntentNormalizer,
+        private val decisionIntentNormalizer: AgentDecisionIntentNormalizer,
         private val systemRuntime: SystemRuntime,
     ) : ViewModel() {
         private var currentChatId: String? = null
@@ -58,7 +58,7 @@ class AgentExperienceViewModel
         private var continuationCount = 0
         private var scenarioClock = INITIAL_SCENARIO_CLOCK
         private var deferredRetriggerInProgress = false
-        private var latestScenarioDecisionIntent: ScenarioDecisionIntent? = null
+        private var latestAgentDecisionIntent: AgentDecisionIntent? = null
         private var pendingSelectedActionLabel: String? = null
         private var lastGroomingPaymentAmount: String? = null
         private var awaitingInitialPrecheckDecision = false
@@ -147,7 +147,7 @@ class AgentExperienceViewModel
             activeGroomingDate = scenarioClock.toLocalDate().plusDays(1)
             eventCounter = 0
             continuationCount = 0
-            latestScenarioDecisionIntent = null
+            latestAgentDecisionIntent = null
             pendingSelectedActionLabel = null
             lastGroomingPaymentAmount = null
             awaitingInitialPrecheckDecision = true
@@ -319,21 +319,22 @@ class AgentExperienceViewModel
             }
             viewModelScope.launch {
                 val normalized = decisionIntentNormalizer.normalize(
-                    ScenarioDecisionInput(
-                        scenarioId = scenario.scenarioId,
+                    AgentDecisionInput(
+                        contextId = scenario.scenarioId,
                         promptText = prompt?.text.orEmpty(),
                         presentedActions = prompt?.actions.orEmpty().map { it.toAgentDecisionAction() },
+                        candidateIntents = PetGroomingDecisionIntents.forScenario(scenario.scenarioId),
                         displayText = displayText,
                         rawText = rawText,
                     ),
                 )
                 val initialPrecheckDecision = awaitingInitialPrecheckDecision
                 awaitingInitialPrecheckDecision = false
-                latestScenarioDecisionIntent = normalized.intent
+                latestAgentDecisionIntent = normalized.intent
                 _frame.update {
                     val initialTaskLog =
                         if (initialPrecheckDecision &&
-                            normalized.intent == ScenarioDecisionIntent.PetGroomingKeepCurrentWeek
+                            normalized.intent == PetGroomingDecisionIntents.KeepCurrentWeek
                         ) {
                             AgentTaskLog(
                                 id = nextId("task"),
@@ -359,7 +360,7 @@ class AgentExperienceViewModel
                 }
                 if (
                     initialPrecheckDecision &&
-                    normalized.intent == ScenarioDecisionIntent.PetGroomingDeferCurrentWeek
+                    normalized.intent == PetGroomingDecisionIntents.DeferCurrentWeek
                 ) {
                     completeDeferredGroomingRun()
                     return@launch
@@ -604,7 +605,7 @@ class AgentExperienceViewModel
 
         private fun groomingDeferred(frame: AgentExperienceFrame): Boolean {
             if (frame.scenario.scenarioId != "pet-grooming") return false
-            return latestScenarioDecisionIntent == ScenarioDecisionIntent.PetGroomingDeferCurrentWeek
+            return latestAgentDecisionIntent == PetGroomingDecisionIntents.DeferCurrentWeek
         }
 
         private fun shouldScheduleDeferredRetrigger(frame: AgentExperienceFrame): Boolean =
@@ -621,7 +622,7 @@ class AgentExperienceViewModel
                 val nextClock = scenarioClock.plusDays(7).withHour(13).withMinute(0).withSecond(0).withNano(0)
                 advanceClockTo(nextClock)
                 scenarioClock = nextClock
-                latestScenarioDecisionIntent = null
+                latestAgentDecisionIntent = null
                 pendingSelectedActionLabel = null
                 lastGroomingPaymentAmount = null
                 groomingMilestones.clear()
@@ -1762,10 +1763,11 @@ class AgentExperienceViewModel
             }
             viewModelScope.launch {
                 val normalized = decisionIntentNormalizer.normalize(
-                    ScenarioDecisionInput(
-                        scenarioId = scenario.scenarioId,
+                    AgentDecisionInput(
+                        contextId = scenario.scenarioId,
                         promptText = prompt.text,
                         presentedActions = prompt.actions.map { it.toAgentDecisionAction() },
+                        candidateIntents = PetGroomingDecisionIntents.forScenario(scenario.scenarioId),
                         displayText = displayText,
                         rawText = rawText,
                     ),
@@ -1780,8 +1782,8 @@ class AgentExperienceViewModel
                 }
                 // LLM 只负责识别用户意图，具体执行仍走稳定的场景动作。
                 when (normalized.intent) {
-                    ScenarioDecisionIntent.PetGroomingAcceptOpenSlot -> acceptPetSmartOpenSlot(displayText)
-                    ScenarioDecisionIntent.PetGroomingKeepOriginalSlot -> keepOriginalPetSmartSlot(displayText)
+                    PetGroomingDecisionIntents.AcceptOpenSlot -> acceptPetSmartOpenSlot(displayText)
+                    PetGroomingDecisionIntents.KeepOriginalSlot -> keepOriginalPetSmartSlot(displayText)
                     else -> askOpenSlotClarification(displayText)
                 }
             }
@@ -2694,10 +2696,10 @@ class AgentExperienceViewModel
             }
 
         private fun selectedAppointmentIsAfternoon(): Boolean =
-            latestScenarioDecisionIntent == ScenarioDecisionIntent.PetGroomingBookAfternoonBathOnly
+            latestAgentDecisionIntent == PetGroomingDecisionIntents.BookAfternoonBathOnly
 
         private fun selectedAppointmentIsAlternative(): Boolean =
-            latestScenarioDecisionIntent == ScenarioDecisionIntent.PetGroomingFindAlternative
+            latestAgentDecisionIntent == PetGroomingDecisionIntents.FindAlternative
 
         private fun parseToolData(content: String): JSONObject? {
             val json = content.substringAfter('\n', missingDelimiterValue = "").trim()
@@ -2827,17 +2829,17 @@ class AgentExperienceViewModel
         private fun shouldSuppressResolvedGroomingPrompt(text: String): Boolean {
             if (scenario.scenarioId != "pet-grooming") return false
             val resolvedInitialTradeoff =
-                latestScenarioDecisionIntent in setOf(
-                    ScenarioDecisionIntent.PetGroomingBookNine,
-                    ScenarioDecisionIntent.PetGroomingAskAfternoon,
-                    ScenarioDecisionIntent.PetGroomingBookAfternoonBathOnly,
-                    ScenarioDecisionIntent.PetGroomingFindAlternative,
+                latestAgentDecisionIntent in setOf(
+                    PetGroomingDecisionIntents.BookNine,
+                    PetGroomingDecisionIntents.AskAfternoon,
+                    PetGroomingDecisionIntents.BookAfternoonBathOnly,
+                    PetGroomingDecisionIntents.FindAlternative,
                 )
             val resolvedAfternoonTradeoff =
-                latestScenarioDecisionIntent in setOf(
-                    ScenarioDecisionIntent.PetGroomingBookNine,
-                    ScenarioDecisionIntent.PetGroomingBookAfternoonBathOnly,
-                    ScenarioDecisionIntent.PetGroomingFindAlternative,
+                latestAgentDecisionIntent in setOf(
+                    PetGroomingDecisionIntents.BookNine,
+                    PetGroomingDecisionIntents.BookAfternoonBathOnly,
+                    PetGroomingDecisionIntents.FindAlternative,
                 )
             return when {
                 isAfternoonBathOnlyTradeoff(text) -> resolvedAfternoonTradeoff
