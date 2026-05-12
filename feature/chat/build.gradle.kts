@@ -36,6 +36,7 @@ dependencies {
     implementation(project(":core:systemruntime"))
     implementation(project(":scenarios:pet-grooming"))
     implementation(project(":scenarios:family-shopping"))
+    implementation(project(":scenarios:coldchain-delivery"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

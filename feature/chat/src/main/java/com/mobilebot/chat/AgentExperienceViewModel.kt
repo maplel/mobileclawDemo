@@ -15,6 +15,13 @@ import com.mobilebot.domain.agent.AgentDecisionIntent
 import com.mobilebot.domain.agent.AgentDecisionIntentNormalizer
 import com.mobilebot.domain.interaction.ActionPromptCodec
 import com.mobilebot.domain.todo.TodoListCodec
+import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceConversation
+import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceLog
+import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceParticipant
+import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceProgress
+import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceRole
+import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceStatus
+import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliveryTaskSurface
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceConversation
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceLog
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceParticipant
@@ -1489,6 +1496,27 @@ class AgentExperienceViewModel
             }
         }
 
+        private fun applyColdchainDeliveryTaskUpdate(
+            update: com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliveryTaskUpdate,
+            timeText: String,
+            activate: Boolean = false,
+        ) {
+            updateTaskState(ColdchainDeliveryTaskSurface.TASK_ID, activate = activate) { task ->
+                val baseParticipants = update.participants?.map { it.toAgentParticipant() } ?: task.participants
+                task.copy(
+                    status = update.status.toAgentStatus(),
+                    updatedTimeText = timeText,
+                    subtitle = update.subtitle,
+                    conversationItems = task.conversationItems + update.conversations.map { it.toConversationItem() },
+                    taskLogs = appendTaskLogs(task.taskLogs, update.logs.toColdchainTaskLogs(timeText)),
+                    participants = update.participantsToAdd.fold(baseParticipants) { participants, participant ->
+                        participants.withParticipant(participant.toAgentParticipant())
+                    },
+                    progressLine = update.progress.toProgressLine(),
+                )
+            }
+        }
+
         private fun PetGroomingSurfaceStatus.toAgentStatus(): AgentTimelineStatus =
             when (this) {
                 PetGroomingSurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
@@ -1501,6 +1529,13 @@ class AgentExperienceViewModel
                 FamilyShoppingSurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
                 FamilyShoppingSurfaceStatus.DONE -> AgentTimelineStatus.DONE
                 FamilyShoppingSurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
+            }
+
+        private fun ColdchainDeliverySurfaceStatus.toAgentStatus(): AgentTimelineStatus =
+            when (this) {
+                ColdchainDeliverySurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
+                ColdchainDeliverySurfaceStatus.DONE -> AgentTimelineStatus.DONE
+                ColdchainDeliverySurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
             }
 
         private fun PetGroomingSurfaceConversation.toConversationItem(): AgentConversationItem =
@@ -1523,6 +1558,16 @@ class AgentExperienceViewModel
                 text = text,
             )
 
+        private fun ColdchainDeliverySurfaceConversation.toConversationItem(): AgentConversationItem =
+            AgentConversationItem(
+                id = nextId("conversation"),
+                role = when (role) {
+                    ColdchainDeliverySurfaceRole.AGENT -> AgentConversationRole.AGENT
+                    ColdchainDeliverySurfaceRole.USER -> AgentConversationRole.USER
+                },
+                text = text,
+            )
+
         private fun List<PetGroomingSurfaceLog>.toTaskLogs(timeText: String): List<AgentTaskLog> =
             map {
                 AgentTaskLog(
@@ -1533,6 +1578,15 @@ class AgentExperienceViewModel
             }
 
         private fun List<FamilyShoppingSurfaceLog>.toFamilyTaskLogs(timeText: String): List<AgentTaskLog> =
+            map {
+                AgentTaskLog(
+                    id = nextId("task"),
+                    timeText = timeText,
+                    text = it.text,
+                )
+            }
+
+        private fun List<ColdchainDeliverySurfaceLog>.toColdchainTaskLogs(timeText: String): List<AgentTaskLog> =
             map {
                 AgentTaskLog(
                     id = nextId("task"),
@@ -1557,7 +1611,23 @@ class AgentExperienceViewModel
                 role = role,
             )
 
+        private fun ColdchainDeliverySurfaceParticipant.toAgentParticipant(): AgentParticipant =
+            AgentParticipant(
+                id = id,
+                label = label,
+                displayName = displayName,
+                role = role,
+            )
+
         private fun PetGroomingSurfaceProgress.toProgressLine(): AgentProgressLine =
+            AgentProgressLine(
+                label = label,
+                detail = detail,
+                completed = completed,
+                total = total,
+            )
+
+        private fun ColdchainDeliverySurfaceProgress.toProgressLine(): AgentProgressLine =
             AgentProgressLine(
                 label = label,
                 detail = detail,
@@ -1886,111 +1956,33 @@ class AgentExperienceViewModel
         }
 
         private fun handleCourierColdchainArriving(event: RuntimeNotificationEvent) {
+            val seed = ColdchainDeliveryTaskSurface.arriving(event.body)
             val task = AgentTaskState(
-                id = PACKAGE_TASK_ID,
-                title = "冷链收货",
-                subtitle = "13:45 到达小区",
-                status = AgentTimelineStatus.RUNNING,
+                id = ColdchainDeliveryTaskSurface.TASK_ID,
+                title = seed.title,
+                subtitle = seed.subtitle,
+                status = seed.status.toAgentStatus(),
                 updatedTimeText = blueprintTimeText(event.occurredAt),
-                conversationItems = listOf(
-                    AgentConversationItem(
-                        id = nextId("conversation"),
-                        role = AgentConversationRole.AGENT,
-                        text = "顺丰冷链预计 13:45 到小区，我会跟进是否需要物业代收。",
-                    ),
-                ),
-                taskLogs = listOf(
-                    AgentTaskLog(
-                        id = nextId("task"),
-                        timeText = blueprintTimeText(event.occurredAt),
-                        text = "收到顺丰冷链通知：${event.body}",
-                    ),
-                    AgentTaskLog(
-                        id = nextId("task"),
-                        timeText = blueprintTimeText(event.occurredAt),
-                        text = "新建冷链收货任务，关注是否需要及时入冰柜。",
-                    ),
-                ),
-                participants = listOf(
-                    AgentParticipant("courier-coldchain", "顺", "顺丰冷链", "delivery_service"),
-                ),
-                progressLine = AgentProgressLine(
-                    label = "进行中",
-                    detail = "等待包裹到达",
-                    completed = 1,
-                    total = 3,
-                ),
+                conversationItems = seed.conversations.map { it.toConversationItem() },
+                taskLogs = seed.logs.toColdchainTaskLogs(blueprintTimeText(event.occurredAt)),
+                participants = seed.participants.map { it.toAgentParticipant() },
+                progressLine = seed.progress.toProgressLine(),
             )
             upsertTask(task)
         }
 
         private fun handleCourierColdchainDelivered(event: RuntimeNotificationEvent) {
-            updateTaskState(PACKAGE_TASK_ID, activate = false) { task ->
-                task.copy(
-                    updatedTimeText = blueprintTimeText(event.occurredAt),
-                    subtitle = "已放入前台冰柜",
-                    conversationItems = appendConversation(
-                        task.conversationItems,
-                        AgentConversationRole.AGENT,
-                        "冷链包裹已经到前台冰柜了，我继续看物业是否能帮忙保管到你方便再取。",
-                    ),
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "收到顺丰冷链通知：${event.body}",
-                            ),
-                        ),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "进行中",
-                        detail = "等待物业确认保管",
-                        completed = 2,
-                        total = 3,
-                    ),
-                )
-            }
+            applyColdchainDeliveryTaskUpdate(
+                update = ColdchainDeliveryTaskSurface.delivered(event.body),
+                timeText = blueprintTimeText(event.occurredAt),
+            )
         }
 
         private fun handlePropertyCourierHelp(event: IncomingSmsEvent) {
-            updateTaskState(PACKAGE_TASK_ID, activate = false) { task ->
-                task.copy(
-                    status = AgentTimelineStatus.DONE,
-                    updatedTimeText = blueprintTimeText(event.occurredAt),
-                    subtitle = "物业已协助保管",
-                    conversationItems = appendConversation(
-                        task.conversationItems,
-                        AgentConversationRole.AGENT,
-                        "物业可以先把冷链包裹放进前台冰柜，这条线我已经处理好了。",
-                    ),
-                    taskLogs = appendTaskLogs(
-                        task.taskLogs,
-                        listOf(
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "收到物业管家的短信：${event.body}",
-                            ),
-                            AgentTaskLog(
-                                id = nextId("task"),
-                                timeText = blueprintTimeText(event.occurredAt),
-                                text = "更新状态：冷链包裹由物业前台冰柜保管。",
-                            ),
-                        ),
-                    ),
-                    participants = task.participants.withParticipant(
-                        AgentParticipant("property-service", "物", "物业管家", "property_service"),
-                    ),
-                    progressLine = AgentProgressLine(
-                        label = "完成",
-                        detail = "物业已协助保管",
-                        completed = 3,
-                        total = 3,
-                    ),
-                )
-            }
+            applyColdchainDeliveryTaskUpdate(
+                update = ColdchainDeliveryTaskSurface.propertyHelp(event.body),
+                timeText = blueprintTimeText(event.occurredAt),
+            )
         }
 
         private fun handleDriverArrivedPetSmart(event: IncomingSmsEvent) {
@@ -2497,7 +2489,6 @@ class AgentExperienceViewModel
             private const val TOOL_ROUND_LIMIT_PREFIX = "Stopped: too many tool call rounds"
             private const val SCRIPTED_ACTION_PREFIX = "MULTI:"
             private const val ONE_HOUR_SCENARIO_ID = "one_hour_aio"
-            private const val PACKAGE_TASK_ID = "coldchain-delivery-live"
             private const val HEALTH_TASK_ID = "health-supply-live"
             private val INITIAL_SCENARIO_CLOCK: LocalDateTime = LocalDateTime.of(2027, 4, 25, 13, 0)
             private val CLOCK_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
