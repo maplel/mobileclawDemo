@@ -21,6 +21,15 @@ import com.mobilebot.scenarios.petgrooming.PetGroomingDecisionIntents
 import com.mobilebot.scenarios.petgrooming.PetGroomingMilestone
 import com.mobilebot.scenarios.petgrooming.PetGroomingMilestoneDetector
 import com.mobilebot.scenarios.petgrooming.PetGroomingScenarioSpec
+import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceConversation
+import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceDecision
+import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceLog
+import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceParticipant
+import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceProgress
+import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceRole
+import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceStatus
+import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceTimeline
+import com.mobilebot.scenarios.petgrooming.PetGroomingTaskSurface
 import com.mobilebot.systemruntime.CallEndedEvent
 import com.mobilebot.systemruntime.IncomingCallEvent
 import com.mobilebot.systemruntime.IncomingSmsEvent
@@ -1430,6 +1439,67 @@ class AgentExperienceViewModel
             return PetGroomingContacts.displayDriverReminderBody(raw)
         }
 
+        private fun PetGroomingSurfaceStatus.toAgentStatus(): AgentTimelineStatus =
+            when (this) {
+                PetGroomingSurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
+                PetGroomingSurfaceStatus.DONE -> AgentTimelineStatus.DONE
+                PetGroomingSurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
+            }
+
+        private fun PetGroomingSurfaceConversation.toConversationItem(): AgentConversationItem =
+            AgentConversationItem(
+                id = nextId("conversation"),
+                role = when (role) {
+                    PetGroomingSurfaceRole.AGENT -> AgentConversationRole.AGENT
+                    PetGroomingSurfaceRole.USER -> AgentConversationRole.USER
+                },
+                text = text,
+            )
+
+        private fun List<PetGroomingSurfaceLog>.toTaskLogs(timeText: String): List<AgentTaskLog> =
+            map {
+                AgentTaskLog(
+                    id = nextId("task"),
+                    timeText = timeText,
+                    text = it.text,
+                )
+            }
+
+        private fun PetGroomingSurfaceParticipant.toAgentParticipant(): AgentParticipant =
+            AgentParticipant(
+                id = id,
+                label = label,
+                displayName = displayName,
+                role = role,
+            )
+
+        private fun PetGroomingSurfaceProgress.toProgressLine(): AgentProgressLine =
+            AgentProgressLine(
+                label = label,
+                detail = detail,
+                completed = completed,
+                total = total,
+            )
+
+        private fun PetGroomingSurfaceDecision.toDecisionPrompt(): DecisionPrompt =
+            DecisionPrompt(
+                text = text,
+                actions = actions.map {
+                    ActionButton(
+                        label = it.label,
+                        value = "$SCRIPTED_ACTION_PREFIX${it.key}",
+                    )
+                },
+            )
+
+        private fun PetGroomingSurfaceTimeline.toTimelineEvent(): AgentTimelineEvent =
+            AgentTimelineEvent(
+                id = nextId("timeline"),
+                title = title,
+                detail = detail,
+                status = status.toAgentStatus(),
+            )
+
         private fun AgentExperienceFrame.withScenarioEventClock(
             tool: String,
             content: String,
@@ -1504,50 +1574,19 @@ class AgentExperienceViewModel
         }
 
         private fun createPetGroomingTask(event: IncomingSmsEvent) {
+            val seed = PetGroomingTaskSurface.openSlotSeed(event.body)
             val task = AgentTaskState(
-                id = PET_TASK_ID,
-                title = "麒麟洗护",
-                subtitle = "PetSmart 14:00 空档待确认",
-                status = AgentTimelineStatus.BLOCKED,
+                id = PetGroomingTaskSurface.TASK_ID,
+                title = seed.title,
+                subtitle = seed.subtitle,
+                status = seed.status.toAgentStatus(),
                 updatedTimeText = blueprintTimeText(scenarioClock),
-                conversationItems = listOf(
-                    AgentConversationItem(
-                        id = nextId("conversation"),
-                        role = AgentConversationRole.AGENT,
-                        text = "PetSmart 来信息说 14:00 空出来了，可以安排 Kylin 洗澡和去浮毛。要把原来 17:00 只洗澡改到 14:00 吗？",
-                    ),
-                ),
-                taskLogs = listOf(
-                    AgentTaskLog(
-                        id = nextId("task"),
-                        timeText = blueprintTimeText(scenarioClock),
-                        text = "收到 PetSmart 的短信：${event.body}",
-                    ),
-                ),
-                participants = listOf(
-                    AgentParticipant("petsmart", "PS", "PetSmart", "grooming_shop"),
-                ),
-                progressLine = AgentProgressLine(
-                    label = "等待",
-                    detail = "等待用户决策",
-                    completed = 0,
-                    total = 7,
-                ),
-                decisionPrompt = DecisionPrompt(
-                    text = "要把 Kylin 改到 14:00 洗澡和去浮毛吗？",
-                    actions = listOf(
-                        ActionButton("可以", "${SCRIPTED_ACTION_PREFIX}pet.accept_14"),
-                        ActionButton("不改了", "${SCRIPTED_ACTION_PREFIX}pet.keep_17"),
-                    ),
-                ),
-                timeline = listOf(
-                    AgentTimelineEvent(
-                        id = nextId("timeline"),
-                        title = "PetSmart 来信",
-                        detail = event.body,
-                        status = AgentTimelineStatus.BLOCKED,
-                    ),
-                ),
+                conversationItems = seed.conversations.map { it.toConversationItem() },
+                taskLogs = seed.logs.toTaskLogs(blueprintTimeText(scenarioClock)),
+                participants = seed.participants.map { it.toAgentParticipant() },
+                progressLine = seed.progress.toProgressLine(),
+                decisionPrompt = seed.decision?.toDecisionPrompt(),
+                timeline = seed.timeline.map { it.toTimelineEvent() },
             )
             upsertTask(task)
         }
@@ -1604,24 +1643,15 @@ class AgentExperienceViewModel
         }
 
         private fun askOpenSlotClarification(userText: String) {
-            val prompt = DecisionPrompt(
-                text = "你是想改到 14:00，还是保留原来的 17:00？",
-                actions = listOf(
-                    ActionButton("可以", "${SCRIPTED_ACTION_PREFIX}pet.accept_14"),
-                    ActionButton("不改了", "${SCRIPTED_ACTION_PREFIX}pet.keep_17"),
-                ),
-            )
+            val (conversations, decision) = PetGroomingTaskSurface.openSlotClarification(userText)
+            val prompt = decision.toDecisionPrompt()
             _frame.update {
                 it.copy(
                     busy = false,
                     statusLabel = "等待",
                     decisionPrompt = prompt,
                     activeActionValue = null,
-                    conversationItems = appendConversation(
-                        appendConversation(it.conversationItems, AgentConversationRole.USER, userText),
-                        AgentConversationRole.AGENT,
-                        prompt.text,
-                    ),
+                    conversationItems = it.conversationItems + conversations.map { item -> item.toConversationItem() },
                     progressLine = AgentProgressLine(
                         label = "等待",
                         detail = "等待用户决策",
@@ -1636,54 +1666,20 @@ class AgentExperienceViewModel
         private fun acceptPetSmartOpenSlot(label: String) {
             pendingSelectedActionLabel = null
             val frame = _frame.value
-            val task = taskStates[PET_TASK_ID] ?: return
+            val task = taskStates[PetGroomingTaskSurface.TASK_ID] ?: return
+            val surface = PetGroomingTaskSurface.acceptOpenSlot(label)
             val updated = task.copy(
-                status = AgentTimelineStatus.RUNNING,
+                status = surface.status.toAgentStatus(),
                 updatedTimeText = blueprintTimeText(scenarioClock),
-                subtitle = "已改约 14:00，等待司机确认",
-                conversationItems = appendConversation(
-                    appendConversation(frame.conversationItems, AgentConversationRole.USER, label),
-                    AgentConversationRole.AGENT,
-                    "我已经回复 PetSmart 同意改到 14:00，并联系了司机老陈，正在等他确认。",
-                ),
-                taskLogs = appendTaskLogs(
-                    frame.taskLogs,
-                    listOf(
-                        AgentTaskLog(
-                            id = nextId("task"),
-                            timeText = blueprintTimeText(scenarioClock),
-                            text = "发送短信给 PetSmart：好的，14:00 准时到。",
-                        ),
-                        AgentTaskLog(
-                            id = nextId("task"),
-                            timeText = blueprintTimeText(scenarioClock),
-                            text = "添加 Driver 到参与方。",
-                        ),
-                        AgentTaskLog(
-                            id = nextId("task"),
-                            timeText = blueprintTimeText(scenarioClock),
-                            text = "发送短信给 Driver：老陈，麻烦 13:20 来楼下接 Kylin，14:00 前送到 PetSmart 洗澡和去浮毛。",
-                        ),
-                    ),
-                ),
-                participants = listOf(
-                    AgentParticipant("petsmart", "PS", "PetSmart", "grooming_shop"),
-                    AgentParticipant("driver", "陈", "老陈", "driver"),
-                ),
-                progressLine = AgentProgressLine(
-                    label = "进行中",
-                    detail = "等待司机确认",
-                    completed = 2,
-                    total = 7,
-                ),
-                decisionPrompt = null,
-                activeActionValue = null,
-                timeline = frame.timeline + AgentTimelineEvent(
-                    id = nextId("timeline"),
-                    title = "已改约",
-                    detail = "PetSmart 和 Driver 已通知。",
-                    status = AgentTimelineStatus.RUNNING,
-                ),
+                subtitle = surface.subtitle,
+                conversationItems = frame.conversationItems + surface.conversations.map { it.toConversationItem() },
+                taskLogs = appendTaskLogs(frame.taskLogs, surface.logs.toTaskLogs(blueprintTimeText(scenarioClock))),
+                participants = surface.participants?.map { it.toAgentParticipant() } ?: task.participants,
+                progressLine = surface.progress.toProgressLine(),
+                decisionPrompt = surface.decision?.toDecisionPrompt(),
+                activeActionValue = surface.activeActionValue,
+                timeline = frame.timeline + surface.timeline.map { it.toTimelineEvent() },
+                finalSummary = surface.finalSummary,
             )
             upsertTask(updated)
             petGroomingAccepted = true
@@ -1692,35 +1688,20 @@ class AgentExperienceViewModel
         private fun keepOriginalPetSmartSlot(label: String) {
             pendingSelectedActionLabel = null
             val frame = _frame.value
-            val task = taskStates[PET_TASK_ID] ?: return
+            val task = taskStates[PetGroomingTaskSurface.TASK_ID] ?: return
+            val surface = PetGroomingTaskSurface.keepOriginalSlot(label)
             val updated = task.copy(
-                status = AgentTimelineStatus.DONE,
+                status = surface.status.toAgentStatus(),
                 updatedTimeText = blueprintTimeText(scenarioClock),
-                subtitle = "保留 17:00 只洗澡",
-                conversationItems = appendConversation(
-                    appendConversation(frame.conversationItems, AgentConversationRole.USER, label),
-                    AgentConversationRole.AGENT,
-                    "好的，保留原来的 17:00 只洗澡安排。",
-                ),
-                taskLogs = appendTaskLogs(
-                    frame.taskLogs,
-                    listOf(
-                        AgentTaskLog(
-                            id = nextId("task"),
-                            timeText = blueprintTimeText(scenarioClock),
-                            text = "保留 PetSmart 17:00 只洗澡安排。",
-                        ),
-                    ),
-                ),
-                progressLine = AgentProgressLine(
-                    label = "完成",
-                    detail = "已保留原安排",
-                    completed = 1,
-                    total = 1,
-                ),
-                decisionPrompt = null,
-                activeActionValue = null,
-                finalSummary = "已保留原来的 17:00 只洗澡安排。",
+                subtitle = surface.subtitle,
+                conversationItems = frame.conversationItems + surface.conversations.map { it.toConversationItem() },
+                taskLogs = appendTaskLogs(frame.taskLogs, surface.logs.toTaskLogs(blueprintTimeText(scenarioClock))),
+                participants = surface.participants?.map { it.toAgentParticipant() } ?: task.participants,
+                progressLine = surface.progress.toProgressLine(),
+                decisionPrompt = surface.decision?.toDecisionPrompt(),
+                activeActionValue = surface.activeActionValue,
+                timeline = frame.timeline + surface.timeline.map { it.toTimelineEvent() },
+                finalSummary = surface.finalSummary,
             )
             upsertTask(updated)
         }
