@@ -186,11 +186,6 @@ private fun PhoneFlowCanvas(
             }
             Box(modifier = Modifier.weight(1f)) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    if (blueprintOpen) {
-                        BlueprintDeck(
-                            frame = frame,
-                        )
-                    }
                     if (frame.activeTaskId == null) {
                         WorkbenchArea(
                             frame = frame,
@@ -198,7 +193,7 @@ private fun PhoneFlowCanvas(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(horizontal = 28.dp)
-                                .padding(top = if (blueprintOpen) 10.dp else 14.dp),
+                                .padding(top = 14.dp),
                         )
                     } else {
                         SessionArea(
@@ -210,9 +205,17 @@ private fun PhoneFlowCanvas(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(horizontal = 28.dp)
-                                .padding(top = if (blueprintOpen) 10.dp else 14.dp),
+                                .padding(top = 14.dp),
                         )
                     }
+                }
+                if (blueprintOpen) {
+                    BlueprintDeck(
+                        frame = frame,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .zIndex(20f),
+                    )
                 }
                 frame.activeCall?.let { activeCall ->
                     ActiveCallOverlay(
@@ -405,6 +408,7 @@ private fun AiWorkFloatingButton(
 @Composable
 private fun BlueprintDeck(
     frame: AgentExperienceFrame,
+    modifier: Modifier = Modifier,
 ) {
     val latestLogIndex = frame.taskLogs.lastIndex.coerceAtLeast(0)
     val latestLogKey = frame.taskLogs.lastOrNull()?.let { row ->
@@ -420,7 +424,7 @@ private fun BlueprintDeck(
     }
 
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(430.dp),
         color = BlueprintGray,
