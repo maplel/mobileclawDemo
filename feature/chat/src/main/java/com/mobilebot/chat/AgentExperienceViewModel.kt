@@ -65,6 +65,7 @@ class AgentExperienceViewModel
         private val taskStates = linkedMapOf<String, AgentTaskState>()
         private val pinnedTaskIds = linkedSetOf<String>()
         private val groomingMilestones = mutableSetOf<GroomingMilestone>()
+        private val endedCallNotificationIds = mutableSetOf<String>()
         // 系统事件只负责投放外部事实，具体任务编排由 Agent 处理。
         private val timelineScript: List<ScenarioTimelineEvent> by lazy {
             systemRuntime.scenarioEvents(ONE_HOUR_SCENARIO_ID)
@@ -1061,10 +1062,14 @@ class AgentExperienceViewModel
         }
 
         fun dismissSystemNotification() {
+            var shouldAutoAdvanceActiveCall = false
             _frame.update { frame ->
                 val notification = frame.systemNotification
-                val call = if (notification?.actionLabel == "接听") {
-                    // 接听后保留通话态，直到系统通话结束事件到达
+                val isIncomingCallAction = notification?.actionLabel == "接听"
+                val isExpiredIncomingCall = isIncomingCallAction && notification.id in endedCallNotificationIds
+                val call = if (isIncomingCallAction && !isExpiredIncomingCall) {
+                    // 接听后短暂展示通话态，再自动推进到系统通话结束事件。
+                    shouldAutoAdvanceActiveCall = true
                     AgentActiveCall(
                         id = notification.id,
                         caller = notification.title.removeSuffix(" 来电"),
@@ -1077,8 +1082,16 @@ class AgentExperienceViewModel
                 }
                 frame.copy(
                     systemNotification = null,
-                    activeCall = call,
+                    activeCall = if (isExpiredIncomingCall) null else call,
                 )
+            }
+            if (shouldAutoAdvanceActiveCall) {
+                viewModelScope.launch {
+                    delay(CALL_CONNECTED_DISPLAY_MS)
+                    if (_frame.value.activeCall != null) {
+                        accelerateClockUntilNextEvent()
+                    }
+                }
             }
         }
 
@@ -2298,6 +2311,8 @@ class AgentExperienceViewModel
         }
 
         private fun handleCallEndedEvent(event: CallEndedEvent) {
+            endedCallNotificationIds += event.id.removeSuffix("-ended")
+            endedCallNotificationIds += event.id
             val task = AgentTaskState(
                 id = FAMILY_TASK_ID,
                 title = "家庭采购",
@@ -2333,7 +2348,16 @@ class AgentExperienceViewModel
                     total = 4,
                 ),
             )
-            _frame.update { it.copy(activeCall = null) }
+            _frame.update {
+                it.copy(
+                    activeCall = null,
+                    systemNotification = if (it.systemNotification?.id in endedCallNotificationIds) {
+                        null
+                    } else {
+                        it.systemNotification
+                    },
+                )
+            }
             upsertTask(task)
         }
 
@@ -2899,6 +2923,7 @@ class AgentExperienceViewModel
             private const val AUTO_TRIGGER_DELAY_MS = 5_000L
             private const val SCENARIO_CLOCK_TICK_MS = 60_000L
             private const val CLOCK_LOOP_INTERVAL_MS = 1_000L
+            private const val CALL_CONNECTED_DISPLAY_MS = 3_000L
             private const val CLOCK_ADVANCE_STEPS = 30
             private const val CLOCK_ADVANCE_STEP_MS = 1_000L
             private const val TOOL_ROUND_LIMIT_PREFIX = "Stopped: too many tool call rounds"
