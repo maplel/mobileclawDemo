@@ -1,4 +1,4 @@
-package com.mobilebot.chat
+package com.mobilebot.domain.agent
 
 import com.mobilebot.domain.LlmConfigurator
 import com.mobilebot.network.LlmClient
@@ -173,9 +173,14 @@ class ScenarioDecisionIntentNormalizer
 data class ScenarioDecisionInput(
     val scenarioId: String,
     val promptText: String,
-    val presentedActions: List<ActionButton>,
+    val presentedActions: List<AgentDecisionAction>,
     val displayText: String,
     val rawText: String,
+)
+
+data class AgentDecisionAction(
+    val label: String,
+    val value: String,
 )
 
 data class ScenarioDecisionResult(

@@ -7,6 +7,10 @@ import com.mobilebot.bus.MessageBus
 import com.mobilebot.data.settings.UserSettingsRepository
 import com.mobilebot.domain.AgentLoop
 import com.mobilebot.domain.ForegroundController
+import com.mobilebot.domain.agent.AgentDecisionAction
+import com.mobilebot.domain.agent.ScenarioDecisionInput
+import com.mobilebot.domain.agent.ScenarioDecisionIntent
+import com.mobilebot.domain.agent.ScenarioDecisionIntentNormalizer
 import com.mobilebot.domain.interaction.ActionPromptCodec
 import com.mobilebot.domain.todo.TodoListCodec
 import com.mobilebot.systemruntime.CallEndedEvent
@@ -287,7 +291,7 @@ class AgentExperienceViewModel
                     ScenarioDecisionInput(
                         scenarioId = scenario.scenarioId,
                         promptText = prompt?.text.orEmpty(),
-                        presentedActions = prompt?.actions.orEmpty(),
+                        presentedActions = prompt?.actions.orEmpty().map { it.toAgentDecisionAction() },
                         displayText = displayText,
                         rawText = rawText,
                     ),
@@ -1730,7 +1734,7 @@ class AgentExperienceViewModel
                     ScenarioDecisionInput(
                         scenarioId = scenario.scenarioId,
                         promptText = prompt.text,
-                        presentedActions = prompt.actions,
+                        presentedActions = prompt.actions.map { it.toAgentDecisionAction() },
                         displayText = displayText,
                         rawText = rawText,
                     ),
@@ -3045,3 +3049,9 @@ class AgentExperienceViewModel
             )
         }
     }
+
+private fun ActionButton.toAgentDecisionAction(): AgentDecisionAction =
+    AgentDecisionAction(
+        label = label,
+        value = value,
+    )
