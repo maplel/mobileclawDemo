@@ -35,6 +35,7 @@ dependencies {
     implementation(project(":core:network"))
     implementation(project(":core:systemruntime"))
     implementation(project(":scenarios:pet-grooming"))
+    implementation(project(":scenarios:runtime"))
     implementation(project(":scenarios:family-shopping"))
     implementation(project(":scenarios:coldchain-delivery"))
     implementation(project(":scenarios:health-supply"))

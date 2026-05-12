@@ -1,78 +1,35 @@
-package com.mobilebot.scenarios.healthsupply
+﻿package com.mobilebot.scenarios.healthsupply
 
-enum class HealthSupplySurfaceStatus {
-    RUNNING,
-    DONE,
-    BLOCKED,
-}
-
-enum class HealthSupplySurfaceRole {
-    AGENT,
-    USER,
-}
-
-data class HealthSupplySurfaceConversation(
-    val role: HealthSupplySurfaceRole,
-    val text: String,
-)
-
-data class HealthSupplySurfaceLog(
-    val text: String,
-)
-
-data class HealthSupplySurfaceParticipant(
-    val id: String,
-    val label: String,
-    val displayName: String,
-    val role: String,
-)
-
-data class HealthSupplySurfaceProgress(
-    val label: String,
-    val detail: String,
-    val completed: Int,
-    val total: Int,
-)
-
-data class HealthSupplyTaskSeed(
-    val title: String,
-    val subtitle: String,
-    val status: HealthSupplySurfaceStatus,
-    val conversations: List<HealthSupplySurfaceConversation>,
-    val logs: List<HealthSupplySurfaceLog>,
-    val participants: List<HealthSupplySurfaceParticipant>,
-    val progress: HealthSupplySurfaceProgress,
-)
-
-data class HealthSupplyTaskUpdate(
-    val status: HealthSupplySurfaceStatus = HealthSupplySurfaceStatus.RUNNING,
-    val subtitle: String,
-    val conversations: List<HealthSupplySurfaceConversation> = emptyList(),
-    val logs: List<HealthSupplySurfaceLog> = emptyList(),
-    val participants: List<HealthSupplySurfaceParticipant>? = null,
-    val progress: HealthSupplySurfaceProgress,
-)
+import com.mobilebot.scenarios.runtime.ScenarioConversation
+import com.mobilebot.scenarios.runtime.ScenarioLog
+import com.mobilebot.scenarios.runtime.ScenarioParticipant
+import com.mobilebot.scenarios.runtime.ScenarioProgress
+import com.mobilebot.scenarios.runtime.ScenarioSurfaceRole
+import com.mobilebot.scenarios.runtime.ScenarioSurfaceStatus
+import com.mobilebot.scenarios.runtime.ScenarioTaskSeed
+import com.mobilebot.scenarios.runtime.ScenarioTaskUpdate
 
 object HealthSupplyTaskSurface {
     const val TASK_ID = "health-supply-live"
 
-    fun pharmacyRestock(messageBody: String): HealthSupplyTaskSeed =
-        HealthSupplyTaskSeed(
+    fun pharmacyRestock(messageBody: String): ScenarioTaskSeed =
+        ScenarioTaskSeed(
+            taskId = TASK_ID,
             title = "健康补给",
             subtitle = "常用品补货候选",
-            status = HealthSupplySurfaceStatus.RUNNING,
+            status = ScenarioSurfaceStatus.RUNNING,
             conversations = listOf(
-                HealthSupplySurfaceConversation(
-                    HealthSupplySurfaceRole.AGENT,
+                ScenarioConversation(
+                    ScenarioSurfaceRole.AGENT,
                     "常买的益生菌补货了，我先放进健康补给任务里，不打断你。",
                 ),
             ),
             logs = listOf(
-                HealthSupplySurfaceLog("收到美团买药通知：$messageBody"),
-                HealthSupplySurfaceLog("新建健康补给任务：益生菌补货候选。"),
+                ScenarioLog("收到美团买药通知：$messageBody"),
+                ScenarioLog("新建健康补给任务：益生菌补货候选。"),
             ),
             participants = listOf(PHARMACY),
-            progress = HealthSupplySurfaceProgress(
+            progress = ScenarioProgress(
                 label = "进行中",
                 detail = "等待是否合并配送",
                 completed = 1,
@@ -80,20 +37,21 @@ object HealthSupplyTaskSurface {
             ),
         )
 
-    fun deliveryCandidate(messageBody: String): HealthSupplyTaskUpdate =
-        HealthSupplyTaskUpdate(
+    fun deliveryCandidate(messageBody: String): ScenarioTaskUpdate =
+        ScenarioTaskUpdate(
+            taskId = TASK_ID,
             subtitle = "可与维生素合并配送",
             conversations = listOf(
-                HealthSupplySurfaceConversation(
-                    HealthSupplySurfaceRole.AGENT,
+                ScenarioConversation(
+                    ScenarioSurfaceRole.AGENT,
                     "健康补给可以和维生素 D 一起配送，我先保留候选，等你有空再确认是否下单。",
                 ),
             ),
             logs = listOf(
-                HealthSupplySurfaceLog("收到美团买药通知：$messageBody"),
-                HealthSupplySurfaceLog("更新健康补给候选：益生菌和维生素 D 可合并配送。"),
+                ScenarioLog("收到美团买药通知：$messageBody"),
+                ScenarioLog("更新健康补给候选：益生菌和维生素 D 可合并配送。"),
             ),
-            progress = HealthSupplySurfaceProgress(
+            progress = ScenarioProgress(
                 label = "等待",
                 detail = "低优先级，稍后再问",
                 completed = 2,
@@ -101,7 +59,7 @@ object HealthSupplyTaskSurface {
             ),
         )
 
-    private val PHARMACY = HealthSupplySurfaceParticipant(
+    private val PHARMACY = ScenarioParticipant(
         id = "pharmacy-service",
         label = "药",
         displayName = "美团买药",

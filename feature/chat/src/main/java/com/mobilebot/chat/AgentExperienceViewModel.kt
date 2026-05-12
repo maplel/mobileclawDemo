@@ -15,26 +15,8 @@ import com.mobilebot.domain.agent.AgentDecisionIntent
 import com.mobilebot.domain.agent.AgentDecisionIntentNormalizer
 import com.mobilebot.domain.interaction.ActionPromptCodec
 import com.mobilebot.domain.todo.TodoListCodec
-import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceConversation
-import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceLog
-import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceParticipant
-import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceProgress
-import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceRole
-import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliverySurfaceStatus
 import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliveryTaskSurface
-import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceConversation
-import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceLog
-import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceParticipant
-import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceProgress
-import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceRole
-import com.mobilebot.scenarios.familyshopping.FamilyShoppingSurfaceStatus
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingTaskSurface
-import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceConversation
-import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceLog
-import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceParticipant
-import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceProgress
-import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceRole
-import com.mobilebot.scenarios.healthsupply.HealthSupplySurfaceStatus
 import com.mobilebot.scenarios.healthsupply.HealthSupplyTaskSurface
 import com.mobilebot.scenarios.petgrooming.PetGroomingContacts
 import com.mobilebot.scenarios.petgrooming.PetGroomingConversationRules
@@ -42,15 +24,17 @@ import com.mobilebot.scenarios.petgrooming.PetGroomingDecisionIntents
 import com.mobilebot.scenarios.petgrooming.PetGroomingMilestone
 import com.mobilebot.scenarios.petgrooming.PetGroomingMilestoneDetector
 import com.mobilebot.scenarios.petgrooming.PetGroomingScenarioSpec
-import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceConversation
-import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceDecision
-import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceLog
-import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceParticipant
-import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceProgress
-import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceRole
-import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceStatus
-import com.mobilebot.scenarios.petgrooming.PetGroomingSurfaceTimeline
 import com.mobilebot.scenarios.petgrooming.PetGroomingTaskSurface
+import com.mobilebot.scenarios.runtime.ScenarioConversation
+import com.mobilebot.scenarios.runtime.ScenarioDecision
+import com.mobilebot.scenarios.runtime.ScenarioLog
+import com.mobilebot.scenarios.runtime.ScenarioParticipant
+import com.mobilebot.scenarios.runtime.ScenarioProgress
+import com.mobilebot.scenarios.runtime.ScenarioSurfaceRole
+import com.mobilebot.scenarios.runtime.ScenarioSurfaceStatus
+import com.mobilebot.scenarios.runtime.ScenarioTaskSeed
+import com.mobilebot.scenarios.runtime.ScenarioTaskUpdate
+import com.mobilebot.scenarios.runtime.ScenarioTimeline
 import com.mobilebot.systemruntime.CallEndedEvent
 import com.mobilebot.systemruntime.IncomingCallEvent
 import com.mobilebot.systemruntime.IncomingSmsEvent
@@ -1461,21 +1445,51 @@ class AgentExperienceViewModel
         }
 
         private fun applyPetGroomingTaskUpdate(
-            update: com.mobilebot.scenarios.petgrooming.PetGroomingTaskUpdate,
+            update: ScenarioTaskUpdate,
+            timeText: String,
+            activate: Boolean = false,
+        ) = applyScenarioTaskUpdate(update, timeText, activate)
+
+        private fun applyFamilyShoppingTaskUpdate(
+            update: ScenarioTaskUpdate,
+            timeText: String,
+            activate: Boolean = false,
+        ) = applyScenarioTaskUpdate(update, timeText, activate)
+
+        private fun applyColdchainDeliveryTaskUpdate(
+            update: ScenarioTaskUpdate,
+            timeText: String,
+            activate: Boolean = false,
+        ) = applyScenarioTaskUpdate(update, timeText, activate)
+
+        private fun applyHealthSupplyTaskUpdate(
+            update: ScenarioTaskUpdate,
+            timeText: String,
+            activate: Boolean = false,
+        ) = applyScenarioTaskUpdate(update, timeText, activate)
+
+        private fun applyScenarioTaskUpdate(
+            update: ScenarioTaskUpdate,
             timeText: String,
             activate: Boolean = false,
         ) {
-            updateTaskState(PetGroomingTaskSurface.TASK_ID, activate = activate) { task ->
+            updateTaskState(update.taskId, activate = activate) { task ->
                 val baseParticipants = update.participants?.map { it.toAgentParticipant() } ?: task.participants
+                val withAdded = update.participantsToAdd.fold(baseParticipants) { participants, participant ->
+                    participants.withParticipant(participant.toAgentParticipant())
+                }
+                val participants = if (update.participantsToRemove.isEmpty()) {
+                    withAdded
+                } else {
+                    withAdded.filterNot { it.id in update.participantsToRemove }
+                }
                 task.copy(
                     status = update.status.toAgentStatus(),
                     updatedTimeText = timeText,
                     subtitle = update.subtitle,
                     conversationItems = task.conversationItems + update.conversations.map { it.toConversationItem() },
                     taskLogs = appendTaskLogs(task.taskLogs, update.logs.toTaskLogs(timeText)),
-                    participants = update.participantsToAdd.fold(baseParticipants) { participants, participant ->
-                        participants.withParticipant(participant.toAgentParticipant())
-                    },
+                    participants = participants,
                     progressLine = update.progress.toProgressLine(),
                     decisionPrompt = update.decision?.toDecisionPrompt(),
                     activeActionValue = update.activeActionValue,
@@ -1485,132 +1499,39 @@ class AgentExperienceViewModel
             }
         }
 
-        private fun applyFamilyShoppingTaskUpdate(
-            update: com.mobilebot.scenarios.familyshopping.FamilyShoppingTaskUpdate,
-            timeText: String,
-            activate: Boolean = false,
-        ) {
-            updateTaskState(FamilyShoppingTaskSurface.TASK_ID, activate = activate) { task ->
-                task.copy(
-                    status = update.status.toAgentStatus(),
-                    updatedTimeText = timeText,
-                    subtitle = update.subtitle,
-                    conversationItems = task.conversationItems + update.conversations.map { it.toConversationItem() },
-                    taskLogs = appendTaskLogs(task.taskLogs, update.logs.toFamilyTaskLogs(timeText)),
-                    participants = update.participants?.map { it.toAgentParticipant() } ?: task.participants,
-                    progressLine = update.progress.toProgressLine(),
-                )
-            }
-        }
+        private fun ScenarioTaskSeed.toTaskState(timeText: String): AgentTaskState =
+            AgentTaskState(
+                id = taskId,
+                title = title,
+                subtitle = subtitle,
+                status = status.toAgentStatus(),
+                updatedTimeText = timeText,
+                conversationItems = conversations.map { it.toConversationItem() },
+                taskLogs = logs.toTaskLogs(timeText),
+                participants = participants.map { it.toAgentParticipant() },
+                progressLine = progress.toProgressLine(),
+                timeline = timeline.map { it.toTimelineEvent() },
+                decisionPrompt = decision?.toDecisionPrompt(),
+            )
 
-        private fun applyColdchainDeliveryTaskUpdate(
-            update: com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliveryTaskUpdate,
-            timeText: String,
-            activate: Boolean = false,
-        ) {
-            updateTaskState(ColdchainDeliveryTaskSurface.TASK_ID, activate = activate) { task ->
-                val baseParticipants = update.participants?.map { it.toAgentParticipant() } ?: task.participants
-                task.copy(
-                    status = update.status.toAgentStatus(),
-                    updatedTimeText = timeText,
-                    subtitle = update.subtitle,
-                    conversationItems = task.conversationItems + update.conversations.map { it.toConversationItem() },
-                    taskLogs = appendTaskLogs(task.taskLogs, update.logs.toColdchainTaskLogs(timeText)),
-                    participants = update.participantsToAdd.fold(baseParticipants) { participants, participant ->
-                        participants.withParticipant(participant.toAgentParticipant())
-                    },
-                    progressLine = update.progress.toProgressLine(),
-                )
-            }
-        }
-
-        private fun applyHealthSupplyTaskUpdate(
-            update: com.mobilebot.scenarios.healthsupply.HealthSupplyTaskUpdate,
-            timeText: String,
-            activate: Boolean = false,
-        ) {
-            updateTaskState(HealthSupplyTaskSurface.TASK_ID, activate = activate) { task ->
-                task.copy(
-                    status = update.status.toAgentStatus(),
-                    updatedTimeText = timeText,
-                    subtitle = update.subtitle,
-                    conversationItems = task.conversationItems + update.conversations.map { it.toConversationItem() },
-                    taskLogs = appendTaskLogs(task.taskLogs, update.logs.toHealthSupplyTaskLogs(timeText)),
-                    participants = update.participants?.map { it.toAgentParticipant() } ?: task.participants,
-                    progressLine = update.progress.toProgressLine(),
-                )
-            }
-        }
-
-        private fun PetGroomingSurfaceStatus.toAgentStatus(): AgentTimelineStatus =
+        private fun ScenarioSurfaceStatus.toAgentStatus(): AgentTimelineStatus =
             when (this) {
-                PetGroomingSurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
-                PetGroomingSurfaceStatus.DONE -> AgentTimelineStatus.DONE
-                PetGroomingSurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
+                ScenarioSurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
+                ScenarioSurfaceStatus.DONE -> AgentTimelineStatus.DONE
+                ScenarioSurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
             }
 
-        private fun FamilyShoppingSurfaceStatus.toAgentStatus(): AgentTimelineStatus =
-            when (this) {
-                FamilyShoppingSurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
-                FamilyShoppingSurfaceStatus.DONE -> AgentTimelineStatus.DONE
-                FamilyShoppingSurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
-            }
-
-        private fun ColdchainDeliverySurfaceStatus.toAgentStatus(): AgentTimelineStatus =
-            when (this) {
-                ColdchainDeliverySurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
-                ColdchainDeliverySurfaceStatus.DONE -> AgentTimelineStatus.DONE
-                ColdchainDeliverySurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
-            }
-
-        private fun HealthSupplySurfaceStatus.toAgentStatus(): AgentTimelineStatus =
-            when (this) {
-                HealthSupplySurfaceStatus.RUNNING -> AgentTimelineStatus.RUNNING
-                HealthSupplySurfaceStatus.DONE -> AgentTimelineStatus.DONE
-                HealthSupplySurfaceStatus.BLOCKED -> AgentTimelineStatus.BLOCKED
-            }
-
-        private fun PetGroomingSurfaceConversation.toConversationItem(): AgentConversationItem =
+        private fun ScenarioConversation.toConversationItem(): AgentConversationItem =
             AgentConversationItem(
                 id = nextId("conversation"),
                 role = when (role) {
-                    PetGroomingSurfaceRole.AGENT -> AgentConversationRole.AGENT
-                    PetGroomingSurfaceRole.USER -> AgentConversationRole.USER
+                    ScenarioSurfaceRole.AGENT -> AgentConversationRole.AGENT
+                    ScenarioSurfaceRole.USER -> AgentConversationRole.USER
                 },
                 text = text,
             )
 
-        private fun FamilyShoppingSurfaceConversation.toConversationItem(): AgentConversationItem =
-            AgentConversationItem(
-                id = nextId("conversation"),
-                role = when (role) {
-                    FamilyShoppingSurfaceRole.AGENT -> AgentConversationRole.AGENT
-                    FamilyShoppingSurfaceRole.USER -> AgentConversationRole.USER
-                },
-                text = text,
-            )
-
-        private fun ColdchainDeliverySurfaceConversation.toConversationItem(): AgentConversationItem =
-            AgentConversationItem(
-                id = nextId("conversation"),
-                role = when (role) {
-                    ColdchainDeliverySurfaceRole.AGENT -> AgentConversationRole.AGENT
-                    ColdchainDeliverySurfaceRole.USER -> AgentConversationRole.USER
-                },
-                text = text,
-            )
-
-        private fun HealthSupplySurfaceConversation.toConversationItem(): AgentConversationItem =
-            AgentConversationItem(
-                id = nextId("conversation"),
-                role = when (role) {
-                    HealthSupplySurfaceRole.AGENT -> AgentConversationRole.AGENT
-                    HealthSupplySurfaceRole.USER -> AgentConversationRole.USER
-                },
-                text = text,
-            )
-
-        private fun List<PetGroomingSurfaceLog>.toTaskLogs(timeText: String): List<AgentTaskLog> =
+        private fun List<ScenarioLog>.toTaskLogs(timeText: String): List<AgentTaskLog> =
             map {
                 AgentTaskLog(
                     id = nextId("task"),
@@ -1619,34 +1540,7 @@ class AgentExperienceViewModel
                 )
             }
 
-        private fun List<FamilyShoppingSurfaceLog>.toFamilyTaskLogs(timeText: String): List<AgentTaskLog> =
-            map {
-                AgentTaskLog(
-                    id = nextId("task"),
-                    timeText = timeText,
-                    text = it.text,
-                )
-            }
-
-        private fun List<ColdchainDeliverySurfaceLog>.toColdchainTaskLogs(timeText: String): List<AgentTaskLog> =
-            map {
-                AgentTaskLog(
-                    id = nextId("task"),
-                    timeText = timeText,
-                    text = it.text,
-                )
-            }
-
-        private fun List<HealthSupplySurfaceLog>.toHealthSupplyTaskLogs(timeText: String): List<AgentTaskLog> =
-            map {
-                AgentTaskLog(
-                    id = nextId("task"),
-                    timeText = timeText,
-                    text = it.text,
-                )
-            }
-
-        private fun PetGroomingSurfaceParticipant.toAgentParticipant(): AgentParticipant =
+        private fun ScenarioParticipant.toAgentParticipant(): AgentParticipant =
             AgentParticipant(
                 id = id,
                 label = label,
@@ -1654,31 +1548,7 @@ class AgentExperienceViewModel
                 role = role,
             )
 
-        private fun FamilyShoppingSurfaceParticipant.toAgentParticipant(): AgentParticipant =
-            AgentParticipant(
-                id = id,
-                label = label,
-                displayName = displayName,
-                role = role,
-            )
-
-        private fun ColdchainDeliverySurfaceParticipant.toAgentParticipant(): AgentParticipant =
-            AgentParticipant(
-                id = id,
-                label = label,
-                displayName = displayName,
-                role = role,
-            )
-
-        private fun HealthSupplySurfaceParticipant.toAgentParticipant(): AgentParticipant =
-            AgentParticipant(
-                id = id,
-                label = label,
-                displayName = displayName,
-                role = role,
-            )
-
-        private fun PetGroomingSurfaceProgress.toProgressLine(): AgentProgressLine =
+        private fun ScenarioProgress.toProgressLine(): AgentProgressLine =
             AgentProgressLine(
                 label = label,
                 detail = detail,
@@ -1686,31 +1556,7 @@ class AgentExperienceViewModel
                 total = total,
             )
 
-        private fun HealthSupplySurfaceProgress.toProgressLine(): AgentProgressLine =
-            AgentProgressLine(
-                label = label,
-                detail = detail,
-                completed = completed,
-                total = total,
-            )
-
-        private fun ColdchainDeliverySurfaceProgress.toProgressLine(): AgentProgressLine =
-            AgentProgressLine(
-                label = label,
-                detail = detail,
-                completed = completed,
-                total = total,
-            )
-
-        private fun FamilyShoppingSurfaceProgress.toProgressLine(): AgentProgressLine =
-            AgentProgressLine(
-                label = label,
-                detail = detail,
-                completed = completed,
-                total = total,
-            )
-
-        private fun PetGroomingSurfaceDecision.toDecisionPrompt(): DecisionPrompt =
+        private fun ScenarioDecision.toDecisionPrompt(): DecisionPrompt =
             DecisionPrompt(
                 text = text,
                 actions = actions.map {
@@ -1721,14 +1567,13 @@ class AgentExperienceViewModel
                 },
             )
 
-        private fun PetGroomingSurfaceTimeline.toTimelineEvent(): AgentTimelineEvent =
+        private fun ScenarioTimeline.toTimelineEvent(): AgentTimelineEvent =
             AgentTimelineEvent(
                 id = nextId("timeline"),
                 title = title,
                 detail = detail,
                 status = status.toAgentStatus(),
             )
-
         private fun AgentExperienceFrame.withScenarioEventClock(
             tool: String,
             content: String,
@@ -1804,20 +1649,7 @@ class AgentExperienceViewModel
 
         private fun createPetGroomingTask(event: IncomingSmsEvent) {
             val seed = PetGroomingTaskSurface.openSlotSeed(event.body)
-            val task = AgentTaskState(
-                id = PetGroomingTaskSurface.TASK_ID,
-                title = seed.title,
-                subtitle = seed.subtitle,
-                status = seed.status.toAgentStatus(),
-                updatedTimeText = blueprintTimeText(scenarioClock),
-                conversationItems = seed.conversations.map { it.toConversationItem() },
-                taskLogs = seed.logs.toTaskLogs(blueprintTimeText(scenarioClock)),
-                participants = seed.participants.map { it.toAgentParticipant() },
-                progressLine = seed.progress.toProgressLine(),
-                decisionPrompt = seed.decision?.toDecisionPrompt(),
-                timeline = seed.timeline.map { it.toTimelineEvent() },
-            )
-            upsertTask(task)
+            upsertTask(seed.toTaskState(blueprintTimeText(scenarioClock)))
         }
 
         private fun handleLocalScenarioDecision(
@@ -1894,45 +1726,15 @@ class AgentExperienceViewModel
 
         private fun acceptPetSmartOpenSlot(label: String) {
             pendingSelectedActionLabel = null
-            val frame = _frame.value
-            val task = taskStates[PetGroomingTaskSurface.TASK_ID] ?: return
             val surface = PetGroomingTaskSurface.acceptOpenSlot(label)
-            val updated = task.copy(
-                status = surface.status.toAgentStatus(),
-                updatedTimeText = blueprintTimeText(scenarioClock),
-                subtitle = surface.subtitle,
-                conversationItems = frame.conversationItems + surface.conversations.map { it.toConversationItem() },
-                taskLogs = appendTaskLogs(frame.taskLogs, surface.logs.toTaskLogs(blueprintTimeText(scenarioClock))),
-                participants = surface.participants?.map { it.toAgentParticipant() } ?: task.participants,
-                progressLine = surface.progress.toProgressLine(),
-                decisionPrompt = surface.decision?.toDecisionPrompt(),
-                activeActionValue = surface.activeActionValue,
-                timeline = frame.timeline + surface.timeline.map { it.toTimelineEvent() },
-                finalSummary = surface.finalSummary,
-            )
-            upsertTask(updated)
+            applyScenarioTaskUpdate(surface, blueprintTimeText(scenarioClock), activate = true)
             petGroomingAccepted = true
         }
 
         private fun keepOriginalPetSmartSlot(label: String) {
             pendingSelectedActionLabel = null
-            val frame = _frame.value
-            val task = taskStates[PetGroomingTaskSurface.TASK_ID] ?: return
             val surface = PetGroomingTaskSurface.keepOriginalSlot(label)
-            val updated = task.copy(
-                status = surface.status.toAgentStatus(),
-                updatedTimeText = blueprintTimeText(scenarioClock),
-                subtitle = surface.subtitle,
-                conversationItems = frame.conversationItems + surface.conversations.map { it.toConversationItem() },
-                taskLogs = appendTaskLogs(frame.taskLogs, surface.logs.toTaskLogs(blueprintTimeText(scenarioClock))),
-                participants = surface.participants?.map { it.toAgentParticipant() } ?: task.participants,
-                progressLine = surface.progress.toProgressLine(),
-                decisionPrompt = surface.decision?.toDecisionPrompt(),
-                activeActionValue = surface.activeActionValue,
-                timeline = frame.timeline + surface.timeline.map { it.toTimelineEvent() },
-                finalSummary = surface.finalSummary,
-            )
-            upsertTask(updated)
+            applyScenarioTaskUpdate(surface, blueprintTimeText(scenarioClock), activate = true)
         }
 
         private fun handleDriverPickupConfirmation(event: IncomingSmsEvent) {
@@ -1978,18 +1780,7 @@ class AgentExperienceViewModel
 
         private fun handlePharmacyRestock(event: RuntimeNotificationEvent) {
             val seed = HealthSupplyTaskSurface.pharmacyRestock(event.body)
-            val task = AgentTaskState(
-                id = HealthSupplyTaskSurface.TASK_ID,
-                title = seed.title,
-                subtitle = seed.subtitle,
-                status = seed.status.toAgentStatus(),
-                updatedTimeText = blueprintTimeText(event.occurredAt),
-                conversationItems = seed.conversations.map { it.toConversationItem() },
-                taskLogs = seed.logs.toHealthSupplyTaskLogs(blueprintTimeText(event.occurredAt)),
-                participants = seed.participants.map { it.toAgentParticipant() },
-                progressLine = seed.progress.toProgressLine(),
-            )
-            upsertTask(task)
+            upsertTask(seed.toTaskState(blueprintTimeText(event.occurredAt)))
         }
 
         private fun handleMarketDeliveryWindow(event: RuntimeNotificationEvent) {
@@ -2001,18 +1792,7 @@ class AgentExperienceViewModel
 
         private fun handleCourierColdchainArriving(event: RuntimeNotificationEvent) {
             val seed = ColdchainDeliveryTaskSurface.arriving(event.body)
-            val task = AgentTaskState(
-                id = ColdchainDeliveryTaskSurface.TASK_ID,
-                title = seed.title,
-                subtitle = seed.subtitle,
-                status = seed.status.toAgentStatus(),
-                updatedTimeText = blueprintTimeText(event.occurredAt),
-                conversationItems = seed.conversations.map { it.toConversationItem() },
-                taskLogs = seed.logs.toColdchainTaskLogs(blueprintTimeText(event.occurredAt)),
-                participants = seed.participants.map { it.toAgentParticipant() },
-                progressLine = seed.progress.toProgressLine(),
-            )
-            upsertTask(task)
+            upsertTask(seed.toTaskState(blueprintTimeText(event.occurredAt)))
         }
 
         private fun handleCourierColdchainDelivered(event: RuntimeNotificationEvent) {
@@ -2085,17 +1865,7 @@ class AgentExperienceViewModel
             endedCallNotificationIds += event.id.removeSuffix("-ended")
             endedCallNotificationIds += event.id
             val seed = FamilyShoppingTaskSurface.fromEllaCall()
-            val task = AgentTaskState(
-                id = FamilyShoppingTaskSurface.TASK_ID,
-                title = seed.title,
-                subtitle = seed.subtitle,
-                status = seed.status.toAgentStatus(),
-                updatedTimeText = blueprintTimeText(scenarioClock),
-                conversationItems = seed.conversations.map { it.toConversationItem() },
-                taskLogs = seed.logs.toFamilyTaskLogs(blueprintTimeText(scenarioClock)),
-                participants = seed.participants.map { it.toAgentParticipant() },
-                progressLine = seed.progress.toProgressLine(),
-            )
+            val task = seed.toTaskState(blueprintTimeText(scenarioClock))
             _frame.update {
                 it.copy(
                     activeCall = null,
