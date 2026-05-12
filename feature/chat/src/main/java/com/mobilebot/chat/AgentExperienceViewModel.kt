@@ -15,9 +15,8 @@ import com.mobilebot.domain.agent.AgentDecisionIntent
 import com.mobilebot.domain.agent.AgentDecisionIntentNormalizer
 import com.mobilebot.domain.interaction.ActionPromptCodec
 import com.mobilebot.domain.todo.TodoListCodec
-import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliveryTaskSurface
-import com.mobilebot.scenarios.familyshopping.FamilyShoppingTaskSurface
-import com.mobilebot.scenarios.healthsupply.HealthSupplyTaskSurface
+import com.mobilebot.scenarios.onehour.OneHourFlowEffect
+import com.mobilebot.scenarios.onehour.OneHourScenarioFlow
 import com.mobilebot.scenarios.petgrooming.PetGroomingContacts
 import com.mobilebot.scenarios.petgrooming.PetGroomingConversationRules
 import com.mobilebot.scenarios.petgrooming.PetGroomingDecisionIntents
@@ -85,13 +84,13 @@ class AgentExperienceViewModel
         private var activeGroomingDate = INITIAL_SCENARIO_CLOCK.toLocalDate().plusDays(1)
         private var clockMode = ScenarioClockMode.Live
         private var normalClockElapsedMs = 0L
-        private var petGroomingAccepted = false
         private var taskSortCounter = 0L
         private val deliveredTimelineEvents = mutableSetOf<String>()
         private val taskStates = linkedMapOf<String, AgentTaskState>()
         private val pinnedTaskIds = linkedSetOf<String>()
         private val groomingMilestones = mutableSetOf<PetGroomingMilestone>()
         private val endedCallNotificationIds = mutableSetOf<String>()
+        private val oneHourFlow = OneHourScenarioFlow()
         // 系统事件只负责投放外部事实，具体任务编排由 Agent 处理。
         private val timelineScript: List<ScenarioTimelineEvent> by lazy {
             systemRuntime.scenarioEvents(ONE_HOUR_SCENARIO_ID)
@@ -1623,33 +1622,7 @@ class AgentExperienceViewModel
                     debugTrace = appendTrace(it.debugTrace, "system event -> ${event.id}"),
                 )
             }
-            when (event) {
-                is IncomingSmsEvent -> handleIncomingSmsEvent(event)
-                is IncomingCallEvent -> handleIncomingCallEvent(event)
-                is CallEndedEvent -> handleCallEndedEvent(event)
-                is ReminderFiredEvent -> handleReminderEvent(event)
-                is RuntimeNotificationEvent -> handleRuntimeNotificationEvent(event)
-                else -> Unit
-            }
-        }
-
-        private fun handleIncomingSmsEvent(event: IncomingSmsEvent) {
-            when (event.id) {
-                "petsmart-open-slot" -> createPetGroomingTask(event)
-                "driver-1320-confirm" -> handleDriverPickupConfirmation(event)
-                "ella-shopping-followup" -> handleEllaShoppingFollowup(event)
-                "property-courier-help" -> handlePropertyCourierHelp(event)
-                "driver-kylin-picked-up" -> handleDriverPickedUpKylin(event)
-                "driver-arrived-petsmart" -> handleDriverArrivedPetSmart(event)
-                "petsmart-service-started" -> handlePetSmartServiceStarted(event)
-                "ella-shopping-clarify" -> handleEllaShoppingClarify(event)
-                "petsmart-service-progress" -> handlePetSmartServiceProgress(event)
-            }
-        }
-
-        private fun createPetGroomingTask(event: IncomingSmsEvent) {
-            val seed = PetGroomingTaskSurface.openSlotSeed(event.body)
-            upsertTask(seed.toTaskState(blueprintTimeText(scenarioClock)))
+            applyOneHourFlowEffects(oneHourFlow.handle(event), blueprintTimeText(event.occurredAt))
         }
 
         private fun handleLocalScenarioDecision(
@@ -1726,177 +1699,63 @@ class AgentExperienceViewModel
 
         private fun acceptPetSmartOpenSlot(label: String) {
             pendingSelectedActionLabel = null
-            val surface = PetGroomingTaskSurface.acceptOpenSlot(label)
-            applyScenarioTaskUpdate(surface, blueprintTimeText(scenarioClock), activate = true)
-            petGroomingAccepted = true
+            applyOneHourFlowEffect(oneHourFlow.acceptPetCareSlot(label), blueprintTimeText(scenarioClock))
         }
 
         private fun keepOriginalPetSmartSlot(label: String) {
             pendingSelectedActionLabel = null
-            val surface = PetGroomingTaskSurface.keepOriginalSlot(label)
-            applyScenarioTaskUpdate(surface, blueprintTimeText(scenarioClock), activate = true)
+            applyOneHourFlowEffect(oneHourFlow.keepOriginalPetCareSlot(label), blueprintTimeText(scenarioClock))
         }
 
-        private fun handleDriverPickupConfirmation(event: IncomingSmsEvent) {
-            if (!petGroomingAccepted) return
-            applyPetGroomingTaskUpdate(
-                update = PetGroomingTaskSurface.driverPickupConfirmation(event.body),
-                timeText = blueprintTimeText(scenarioClock),
-            )
+        private fun applyOneHourFlowEffects(
+            effects: List<OneHourFlowEffect>,
+            timeText: String,
+        ) {
+            effects.forEach { applyOneHourFlowEffect(it, timeText) }
         }
 
-        private fun handleEllaShoppingFollowup(event: IncomingSmsEvent) {
-            applyFamilyShoppingTaskUpdate(
-                update = FamilyShoppingTaskSurface.priorityFollowup(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handleDriverPickedUpKylin(event: IncomingSmsEvent) {
-            if (!petGroomingAccepted) return
-            applyPetGroomingTaskUpdate(
-                update = PetGroomingTaskSurface.driverPickedUpKylin(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handleRuntimeNotificationEvent(event: RuntimeNotificationEvent) {
-            when (event.id) {
-                "property-parking-notice" -> handlePropertyParkingNotice(event)
-                "pharmacy-restock" -> handlePharmacyRestock(event)
-                "market-delivery-window" -> handleMarketDeliveryWindow(event)
-                "courier-coldchain-arriving" -> handleCourierColdchainArriving(event)
-                "courier-coldchain-delivered" -> handleCourierColdchainDelivered(event)
-                "health-supply-candidate" -> handleHealthSupplyCandidate(event)
+        private fun applyOneHourFlowEffect(
+            effect: OneHourFlowEffect,
+            timeText: String,
+        ) {
+            when (effect) {
+                is OneHourFlowEffect.CreateTask -> upsertTask(effect.seed.toTaskState(timeText))
+                is OneHourFlowEffect.UpdateTask -> applyScenarioTaskUpdate(
+                    update = effect.update,
+                    timeText = timeText,
+                    activate = effect.activate,
+                )
+                is OneHourFlowEffect.ShowSystemLayer -> showSystemLayer(effect, timeText)
+                is OneHourFlowEffect.ClearSystemLayer -> clearSystemLayer(effect.ids)
+                OneHourFlowEffect.ClearActiveCall -> _frame.update { it.copy(activeCall = null) }
             }
         }
 
-        private fun handlePropertyParkingNotice(event: RuntimeNotificationEvent) {
-            applyPetGroomingTaskUpdate(
-                update = PetGroomingTaskSurface.propertyParkingNotice(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handlePharmacyRestock(event: RuntimeNotificationEvent) {
-            val seed = HealthSupplyTaskSurface.pharmacyRestock(event.body)
-            upsertTask(seed.toTaskState(blueprintTimeText(event.occurredAt)))
-        }
-
-        private fun handleMarketDeliveryWindow(event: RuntimeNotificationEvent) {
-            applyFamilyShoppingTaskUpdate(
-                update = FamilyShoppingTaskSurface.marketDeliveryCandidate(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handleCourierColdchainArriving(event: RuntimeNotificationEvent) {
-            val seed = ColdchainDeliveryTaskSurface.arriving(event.body)
-            upsertTask(seed.toTaskState(blueprintTimeText(event.occurredAt)))
-        }
-
-        private fun handleCourierColdchainDelivered(event: RuntimeNotificationEvent) {
-            applyColdchainDeliveryTaskUpdate(
-                update = ColdchainDeliveryTaskSurface.delivered(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handlePropertyCourierHelp(event: IncomingSmsEvent) {
-            applyColdchainDeliveryTaskUpdate(
-                update = ColdchainDeliveryTaskSurface.propertyHelp(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handleDriverArrivedPetSmart(event: IncomingSmsEvent) {
-            if (!petGroomingAccepted) return
-            applyPetGroomingTaskUpdate(
-                update = PetGroomingTaskSurface.driverArrivedPetSmart(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handlePetSmartServiceStarted(event: IncomingSmsEvent) {
-            if (!petGroomingAccepted) return
-            applyPetGroomingTaskUpdate(
-                update = PetGroomingTaskSurface.serviceStarted(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handleEllaShoppingClarify(event: IncomingSmsEvent) {
-            applyFamilyShoppingTaskUpdate(
-                update = FamilyShoppingTaskSurface.clarifiedList(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handlePetSmartServiceProgress(event: IncomingSmsEvent) {
-            if (!petGroomingAccepted) return
-            applyPetGroomingTaskUpdate(
-                update = PetGroomingTaskSurface.serviceProgress(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handleHealthSupplyCandidate(event: RuntimeNotificationEvent) {
-            applyHealthSupplyTaskUpdate(
-                update = HealthSupplyTaskSurface.deliveryCandidate(event.body),
-                timeText = blueprintTimeText(event.occurredAt),
-            )
-        }
-
-        private fun handleIncomingCallEvent(event: IncomingCallEvent) {
+        private fun showSystemLayer(
+            effect: OneHourFlowEffect.ShowSystemLayer,
+            timeText: String,
+        ) {
             _frame.update {
                 it.copy(
                     systemNotification = AgentSystemNotification(
-                        id = event.id,
-                        title = "Ella 来电",
-                        timeText = blueprintTimeText(event.occurredAt),
-                        body = "正在接入通话转写。",
-                        actionLabel = "接听",
+                        id = effect.id,
+                        title = effect.title,
+                        timeText = timeText,
+                        body = effect.body,
+                        actionLabel = effect.actionLabel,
                     ),
                 )
             }
         }
 
-        private fun handleCallEndedEvent(event: CallEndedEvent) {
-            endedCallNotificationIds += event.id.removeSuffix("-ended")
-            endedCallNotificationIds += event.id
-            val seed = FamilyShoppingTaskSurface.fromEllaCall()
-            val task = seed.toTaskState(blueprintTimeText(scenarioClock))
+        private fun clearSystemLayer(ids: Set<String>) {
+            endedCallNotificationIds += ids
             _frame.update {
                 it.copy(
-                    activeCall = null,
-                    systemNotification = if (it.systemNotification?.id in endedCallNotificationIds) {
-                        null
-                    } else {
-                        it.systemNotification
-                    },
+                    systemNotification = if (it.systemNotification?.id in ids) null else it.systemNotification,
                 )
             }
-            upsertTask(task)
         }
-
-        private fun handleReminderEvent(event: ReminderFiredEvent) {
-            _frame.update {
-                it.copy(
-                    systemNotification = AgentSystemNotification(
-                        id = event.id,
-                        title = event.title,
-                        timeText = blueprintTimeText(event.occurredAt),
-                        body = event.body,
-                        actionLabel = "OK",
-                    ),
-                )
-            }
-            applyPetGroomingTaskUpdate(
-                update = PetGroomingTaskSurface.departureReminderFired(),
-                timeText = blueprintTimeText(scenarioClock),
-            )
-        }
-
         private fun upsertTask(task: AgentTaskState) {
             taskStates[_frame.value.activeTaskId]?.let {
                 taskStates[it.id] = _frame.value.captureTaskState(it)
