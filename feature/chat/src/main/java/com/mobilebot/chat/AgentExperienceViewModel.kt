@@ -47,6 +47,7 @@ import com.mobilebot.systemruntime.SystemRuntimeEvent
 import com.mobilebot.systemruntime.SystemRuntimeScriptEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +89,7 @@ class AgentExperienceViewModel
         private var activeServiceDate = INITIAL_SCENARIO_CLOCK.toLocalDate().plusDays(1)
         private var clockMode = ScenarioClockMode.Live
         private var normalClockElapsedMs = 0L
+        private var fastClockJob: Job? = null
         private var taskSortCounter = 0L
         private val deliveredTimelineEvents = mutableSetOf<String>()
         private val taskStates = linkedMapOf<String, AgentTaskState>()
@@ -137,9 +139,23 @@ class AgentExperienceViewModel
 
         fun accelerateClockUntilNextEvent() {
             if (deferredRetriggerInProgress) return
+            if (fastClockJob?.isActive == true) return
+            val target = nextDeliverableTimelineEvent()?.triggerAt ?: return
             clockMode = ScenarioClockMode.FastUntilNextEvent
             normalClockElapsedMs = 0L
             _frame.update { it.copy(clockMode = clockMode) }
+            fastClockJob = viewModelScope.launch {
+                while (scenarioClock.isBefore(target) && clockMode == ScenarioClockMode.FastUntilNextEvent) {
+                    delay(CLOCK_LOOP_INTERVAL_MS)
+                    val nextClock = scenarioClock.plusMinutes(1)
+                    scenarioClock = if (nextClock.isAfter(target)) target else nextClock
+                    _frame.update { it.withClock(scenarioClock) }
+                }
+                handleDueTimelineEvents()
+                if (clockMode == ScenarioClockMode.FastUntilNextEvent) {
+                    setClockModeLive()
+                }
+            }
         }
 
         fun startScenario() {
@@ -1566,9 +1582,7 @@ class AgentExperienceViewModel
         private fun tickScenarioClock() {
             if (deferredRetriggerInProgress) return
             if (clockMode == ScenarioClockMode.FastUntilNextEvent) {
-                scenarioClock = scenarioClock.plusMinutes(1)
-                _frame.update { it.withClock(scenarioClock) }
-                handleDueTimelineEvents()
+                // 快进由单独 Job 执行，避免普通时钟循环并发推进。
                 return
             }
             normalClockElapsedMs += CLOCK_LOOP_INTERVAL_MS
@@ -1593,10 +1607,22 @@ class AgentExperienceViewModel
                 }
             }
             if (clockMode == ScenarioClockMode.FastUntilNextEvent) {
-                clockMode = ScenarioClockMode.Live
-                normalClockElapsedMs = 0L
-                _frame.update { it.copy(clockMode = clockMode) }
+                setClockModeLive()
             }
+        }
+
+        private fun nextDeliverableTimelineEvent(): ScenarioTimelineEvent? =
+            timelineScript
+                .asSequence()
+                .filter { it.id !in deliveredTimelineEvents }
+                .filterNot { shouldHoldTimelineEvent(it) }
+                .filter { it.triggerAt.isAfter(scenarioClock) || it.triggerAt == scenarioClock }
+                .minByOrNull { it.triggerAt }
+
+        private fun setClockModeLive() {
+            clockMode = ScenarioClockMode.Live
+            normalClockElapsedMs = 0L
+            _frame.update { it.copy(clockMode = clockMode) }
         }
 
         private fun shouldHoldTimelineEvent(event: ScenarioTimelineEvent): Boolean =
