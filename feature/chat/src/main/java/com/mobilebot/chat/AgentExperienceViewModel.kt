@@ -1584,8 +1584,9 @@ class AgentExperienceViewModel
             val due = timelineScript
                 .filter { it.id !in deliveredTimelineEvents && !it.triggerAt.isAfter(scenarioClock) }
                 .sortedBy { it.triggerAt }
-            if (due.isEmpty()) return
-            for (event in due) {
+            val deliverable = due.filterNot { shouldHoldTimelineEvent(it) }
+            if (deliverable.isEmpty()) return
+            for (event in deliverable) {
                 deliveredTimelineEvents += event.id
                 viewModelScope.launch {
                     systemRuntime.publishEvent(event.toSystemRuntimeEvent())
@@ -1597,6 +1598,9 @@ class AgentExperienceViewModel
                 _frame.update { it.copy(clockMode = clockMode) }
             }
         }
+
+        private fun shouldHoldTimelineEvent(event: ScenarioTimelineEvent): Boolean =
+            event.id in OneHourScenarioFlow.petAcceptanceRequiredEventIds && !oneHourFlow.isPetCareAccepted()
 
         private fun handleSystemRuntimeEvent(event: SystemRuntimeEvent) {
             val referenceEffects = oneHourFlow.handle(event)
@@ -1959,11 +1963,13 @@ class AgentExperienceViewModel
             if (result?.isOk == true && result.commands.isNotEmpty()) {
                 pendingSelectedActionLabel = null
                 applyScenarioAgentCommands(result.commands, timeText)
+                handleDueTimelineEvents()
                 _frame.update { it.copy(busy = false, activeActionValue = null) }
             } else {
                 val reason = result?.error ?: "未配置 API Key，使用本地验收基线。"
                 appendScenarioAgentError(taskId, timeText, reason)
                 fallback()
+                handleDueTimelineEvents()
                 _frame.update { it.copy(busy = false, activeActionValue = null) }
             }
         }

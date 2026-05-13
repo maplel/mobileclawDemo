@@ -51,6 +51,8 @@ class OneHourScenarioFlow {
         petCareAccepted = false
     }
 
+    fun isPetCareAccepted(): Boolean = petCareAccepted
+
     fun acceptPetCareSlot(label: String): OneHourFlowEffect.UpdateTask {
         petCareAccepted = true
         return OneHourFlowEffect.UpdateTask(
