@@ -2093,7 +2093,7 @@ class AgentExperienceViewModel
             private const val AUTO_TRIGGER_DELAY_MS = 5_000L
             private const val SCENARIO_CLOCK_TICK_MS = 60_000L
             private const val CLOCK_LOOP_INTERVAL_MS = 1_000L
-            private const val CALL_CONNECTED_DISPLAY_MS = 3_000L
+            private const val CALL_CONNECTED_DISPLAY_MS = 6_000L
             private const val CLOCK_ADVANCE_STEPS = 30
             private const val CLOCK_ADVANCE_STEP_MS = 1_000L
             private const val TOOL_ROUND_LIMIT_PREFIX = "Stopped: too many tool call rounds"
