@@ -1750,11 +1750,9 @@ class AgentExperienceViewModel
                         timeText,
                         "开始监听 ${command.contact} 的短信：${command.reason}",
                     )
-                    is ScenarioAgentCommand.CreateReminder -> appendCommandLog(
-                        command.taskId,
-                        timeText,
-                        "创建提醒：${command.scheduledFor} ${command.title}${command.body.takeIf { it.isNotBlank() }?.let { " - $it" }.orEmpty()}",
-                    )
+                    is ScenarioAgentCommand.CreateReminder -> {
+                        viewModelScope.launch { executeScenarioReminderCommand(command, timeText) }
+                    }
                     is ScenarioAgentCommand.SwitchTask -> selectTask(command.taskId)
                     is ScenarioAgentCommand.CompleteTask -> applyScenarioTaskUpdate(
                         ScenarioTaskUpdate(
@@ -1812,6 +1810,45 @@ class AgentExperienceViewModel
                         participants = updateParticipantsFromTaskLogs(task.participants, logs),
                     )
                 }
+            }
+        }
+
+        private suspend fun executeScenarioReminderCommand(
+            command: ScenarioAgentCommand.CreateReminder,
+            timeText: String,
+        ) {
+            val result = withContext(Dispatchers.IO) {
+                toolRegistry.execute(
+                    "device_system",
+                    JSONObject()
+                        .put("action", "long_reminder")
+                        .put(
+                            "params",
+                            JSONObject()
+                                .put("title", command.title)
+                                .put("body", command.body)
+                                .put("scheduledFor", command.scheduledFor),
+                        )
+                        .toString(),
+                )
+            }
+            val body = if (result.dataJson.isNullOrBlank()) {
+                result.message
+            } else {
+                "${result.message}\n${result.dataJson}"
+            }
+            val log = taskLogFromToolResult(
+                tool = "device_system",
+                content = body,
+                ok = result.ok,
+                eventIndex = taskStates[command.taskId]?.taskLogs?.size ?: 0,
+            ) ?: AgentTaskLog(
+                id = nextId("task"),
+                timeText = timeText,
+                text = "创建提醒：${command.scheduledFor} ${command.title}",
+            )
+            updateTaskState(command.taskId, activate = _frame.value.activeTaskId == command.taskId) { task ->
+                task.copy(taskLogs = appendTaskLogs(task.taskLogs, listOf(log)))
             }
         }
 
