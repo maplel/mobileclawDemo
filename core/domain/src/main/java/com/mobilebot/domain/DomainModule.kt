@@ -14,14 +14,15 @@ import com.mobilebot.domain.tools.OpenSettingsTool
 import com.mobilebot.domain.tools.OpenUrlTool
 import com.mobilebot.domain.tools.ReadSandboxFileTool
 import com.mobilebot.domain.tools.ReadUserProfileTool
-import com.mobilebot.domain.tools.RecallFactsTool
-import com.mobilebot.domain.tools.RememberFactTool
 import com.mobilebot.domain.tools.SearchContactsTool
 import com.mobilebot.domain.tools.SendSmsTool
 import com.mobilebot.domain.tools.SetAlarmTool
 import com.mobilebot.domain.tools.SetTimerTool
 import com.mobilebot.domain.tools.ShareTextTool
 import com.mobilebot.domain.tools.PublishFactTool
+import com.mobilebot.domain.tools.SaveMemoryTool
+import com.mobilebot.domain.tools.RecallMemoriesTool
+import com.mobilebot.domain.tools.DeleteMemoryTool
 import com.mobilebot.domain.tools.SpawnSubtaskTool
 import com.mobilebot.domain.tools.CreateCalendarEventTool
 import com.mobilebot.domain.tools.CreateNotificationTool
@@ -104,15 +105,19 @@ abstract class DomainToolModule {
 
     @Binds
     @IntoSet
+    abstract fun bindSaveMemory(tool: SaveMemoryTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindRecallMemories(tool: RecallMemoriesTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindDeleteMemory(tool: DeleteMemoryTool): Tool
+
+    @Binds
+    @IntoSet
     abstract fun bindReadUserProfile(tool: ReadUserProfileTool): Tool
-
-    @Binds
-    @IntoSet
-    abstract fun bindRecallFacts(tool: RecallFactsTool): Tool
-
-    @Binds
-    @IntoSet
-    abstract fun bindRememberFact(tool: RememberFactTool): Tool
 
     @Binds
     @IntoSet
