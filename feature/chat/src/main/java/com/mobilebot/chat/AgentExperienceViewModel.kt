@@ -1868,12 +1868,66 @@ class AgentExperienceViewModel
                         ),
                     )
                 }
-                // LLM 只负责识别用户意图，具体执行仍走稳定的场景动作。
+                // 用户决策进入同一套受控命令协议，失败时回到验收基线。
                 when {
-                    OneHourScenarioPolicy.isAcceptOpenSlot(normalized.intent) -> acceptOpenSlot(displayText)
-                    OneHourScenarioPolicy.isKeepOriginalSlot(normalized.intent) -> keepOriginalSlot(displayText)
+                    OneHourScenarioPolicy.isAcceptOpenSlot(normalized.intent) -> runScenarioAgentForDecision(
+                        displayText = displayText,
+                        referenceCommands = oneHourFlow.acceptPetCareSlotCommands(displayText),
+                        fallback = { acceptOpenSlot(displayText) },
+                    )
+                    OneHourScenarioPolicy.isKeepOriginalSlot(normalized.intent) -> runScenarioAgentForDecision(
+                        displayText = displayText,
+                        referenceCommands = oneHourFlow.keepOriginalPetCareSlotCommands(displayText),
+                        fallback = { keepOriginalSlot(displayText) },
+                    )
                     else -> askOpenSlotClarification(displayText)
                 }
+            }
+        }
+
+        private suspend fun runScenarioAgentForDecision(
+            displayText: String,
+            referenceCommands: List<ScenarioAgentCommand>,
+            fallback: () -> Unit,
+        ) {
+            val taskId = referenceCommands.firstOrNull()?.taskId ?: _frame.value.activeTaskId
+            val sessionId = sessionIdForTask(taskId)
+            val timeText = blueprintTimeText(scenarioClock)
+            val result = if (settings.getApiKey().isBlank()) {
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    scenarioAgentTurnRunner.run(
+                        ScenarioAgentTurnInput(
+                            sessionId = sessionId,
+                            scenarioId = scenario.scenarioId,
+                            skillName = scenario.skillName,
+                            turnType = "user_decision",
+                            taskId = taskId,
+                            userInput = displayText,
+                            presentedActions = _frame.value.decisionPrompt?.actions.orEmpty()
+                                .map { it.toAgentDecisionAction() },
+                            currentTaskSnapshot = taskSnapshotFor(taskId),
+                            memoryDigest = memoryDigestForScenario(),
+                            skillInstruction = OneHourScenarioPolicy.userDecisionInstruction(
+                                userText = displayText,
+                                referenceCommandsJson = ScenarioCommandCodec.toJson(
+                                    ScenarioCommandBatch(referenceCommands),
+                                ),
+                            ),
+                        ),
+                    )
+                }
+            }
+            if (result?.isOk == true && result.commands.isNotEmpty()) {
+                pendingSelectedActionLabel = null
+                applyScenarioAgentCommands(result.commands, timeText)
+                _frame.update { it.copy(busy = false, activeActionValue = null) }
+            } else {
+                val reason = result?.error ?: "未配置 API Key，使用本地验收基线。"
+                appendScenarioAgentError(taskId, timeText, reason)
+                fallback()
+                _frame.update { it.copy(busy = false, activeActionValue = null) }
             }
         }
 

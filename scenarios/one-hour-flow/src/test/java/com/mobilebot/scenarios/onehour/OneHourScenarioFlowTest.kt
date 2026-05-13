@@ -1,6 +1,7 @@
 package com.mobilebot.scenarios.onehour
 
 import com.mobilebot.scenarios.runtime.ScenarioSurfaceStatus
+import com.mobilebot.scenarios.runtime.ScenarioAgentCommand
 import com.mobilebot.systemruntime.CallEndedEvent
 import com.mobilebot.systemruntime.IncomingCallEvent
 import com.mobilebot.systemruntime.IncomingSmsEvent
@@ -83,6 +84,24 @@ class OneHourScenarioFlowTest {
         assertTrue(driverEffects.single() is OneHourFlowEffect.UpdateTask)
         assertTrue(reminderEffects.any { it is OneHourFlowEffect.ShowSystemLayer })
         assertTrue(reminderEffects.any { it is OneHourFlowEffect.UpdateTask })
+    }
+
+    @Test
+    fun acceptedPetSlotCommandReferencesIncludeSmsAndListener() {
+        val commands = OneHourScenarioFlow().acceptPetCareSlotCommands("可以")
+
+        assertTrue(commands.first() is ScenarioAgentCommand.UpdateTask)
+        assertEquals(
+            listOf("system_update", "PetSmart", "Driver", "Driver"),
+            commands.map {
+                when (it) {
+                    is ScenarioAgentCommand.UpdateTask -> "system_update"
+                    is ScenarioAgentCommand.SendSms -> it.to
+                    is ScenarioAgentCommand.WaitSms -> it.contact
+                    else -> it.taskId
+                }
+            },
+        )
     }
 
     @Test

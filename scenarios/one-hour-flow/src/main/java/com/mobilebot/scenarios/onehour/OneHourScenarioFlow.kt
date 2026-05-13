@@ -5,6 +5,7 @@ import com.mobilebot.scenarios.familyshopping.FamilyShoppingTaskSurface
 import com.mobilebot.scenarios.healthsupply.HealthSupplyTaskSurface
 import com.mobilebot.scenarios.petgrooming.PetGroomingTaskSurface
 import com.mobilebot.scenarios.runtime.ScenarioAgentCommand
+import com.mobilebot.scenarios.runtime.ScenarioLog
 import com.mobilebot.scenarios.runtime.ScenarioTaskSeed
 import com.mobilebot.scenarios.runtime.ScenarioTaskUpdate
 import com.mobilebot.systemruntime.CallEndedEvent
@@ -63,6 +64,38 @@ class OneHourScenarioFlow {
             update = PetGroomingTaskSurface.keepOriginalSlot(label),
             activate = true,
         )
+
+    fun acceptPetCareSlotCommands(label: String): List<ScenarioAgentCommand> {
+        petCareAccepted = true
+        val update = PetGroomingTaskSurface.acceptOpenSlot(label).copy(
+            logs = listOf(ScenarioLog("用户确认改到 14:00 洗澡和去浮毛。")),
+        )
+        return listOf(
+            ScenarioAgentCommand.UpdateTask(update),
+            ScenarioAgentCommand.SendSms(
+                taskId = update.taskId,
+                to = "PetSmart",
+                displayName = "PetSmart",
+                message = "好的，14:00 准时到。",
+            ),
+            ScenarioAgentCommand.SendSms(
+                taskId = update.taskId,
+                to = "Driver",
+                displayName = "老陈",
+                message = "老陈，麻烦 13:20 来楼下接 Kylin，14:00 前送到 PetSmart 洗澡和去浮毛。",
+            ),
+            ScenarioAgentCommand.WaitSms(
+                taskId = update.taskId,
+                contact = "Driver",
+                reason = "等待司机确认 13:20 到楼下接 Kylin",
+            ),
+        )
+    }
+
+    fun keepOriginalPetCareSlotCommands(label: String): List<ScenarioAgentCommand> {
+        petCareAccepted = false
+        return listOf(ScenarioAgentCommand.UpdateTask(PetGroomingTaskSurface.keepOriginalSlot(label)))
+    }
 
     // 系统事件只描述外部事实，这里把事实分发给对应场景处理器。
     fun handle(event: SystemRuntimeEvent): List<OneHourFlowEffect> =
