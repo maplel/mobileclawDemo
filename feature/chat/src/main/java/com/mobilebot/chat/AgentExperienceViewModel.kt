@@ -1,5 +1,6 @@
 ﻿package com.mobilebot.chat
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -88,7 +89,7 @@ class AgentExperienceViewModel
         private var awaitingInitialPrecheckDecision = false
         private var activeServiceDate = INITIAL_SCENARIO_CLOCK.toLocalDate().plusDays(1)
         private var clockMode = ScenarioClockMode.Live
-        private var normalClockElapsedMs = 0L
+        private var liveClockAnchorMs = SystemClock.elapsedRealtime()
         private var fastClockJob: Job? = null
         private var taskSortCounter = 0L
         private val deliveredTimelineEvents = mutableSetOf<String>()
@@ -142,7 +143,6 @@ class AgentExperienceViewModel
             if (fastClockJob?.isActive == true) return
             val target = nextDeliverableTimelineEvent()?.triggerAt ?: return
             clockMode = ScenarioClockMode.FastUntilNextEvent
-            normalClockElapsedMs = 0L
             _frame.update { it.copy(clockMode = clockMode) }
             fastClockJob = viewModelScope.launch {
                 while (scenarioClock.isBefore(target) && clockMode == ScenarioClockMode.FastUntilNextEvent) {
@@ -167,9 +167,10 @@ class AgentExperienceViewModel
             eventCounter = 0
             continuationCount = 0
             latestAgentDecisionIntent = null
-            pendingSelectedActionLabel = null
-            awaitingInitialPrecheckDecision = true
-            taskSessionIds.clear()
+                pendingSelectedActionLabel = null
+                awaitingInitialPrecheckDecision = true
+                resetLiveClockAnchor()
+                taskSessionIds.clear()
             scenarioRunTracker.clear()
             val baseFrame = AgentExperienceFrame.initial(scenario).withClock(scenarioClock)
             val precheckDecision = OneHourScenarioPolicy.precheckDecision()
@@ -604,6 +605,7 @@ class AgentExperienceViewModel
                 val nextClock = scenarioClock.plusDays(7).withHour(13).withMinute(0).withSecond(0).withNano(0)
                 advanceClockTo(nextClock)
                 scenarioClock = nextClock
+                resetLiveClockAnchor()
                 latestAgentDecisionIntent = null
                 pendingSelectedActionLabel = null
                 scenarioRunTracker.clear()
@@ -1585,10 +1587,10 @@ class AgentExperienceViewModel
                 // 快进由单独 Job 执行，避免普通时钟循环并发推进。
                 return
             }
-            normalClockElapsedMs += CLOCK_LOOP_INTERVAL_MS
-            if (normalClockElapsedMs >= SCENARIO_CLOCK_TICK_MS) {
-                normalClockElapsedMs = 0L
-                scenarioClock = scenarioClock.plusMinutes(1)
+            val elapsedMinutes = (SystemClock.elapsedRealtime() - liveClockAnchorMs) / SCENARIO_CLOCK_TICK_MS
+            if (elapsedMinutes > 0L) {
+                liveClockAnchorMs += elapsedMinutes * SCENARIO_CLOCK_TICK_MS
+                scenarioClock = scenarioClock.plusMinutes(elapsedMinutes)
                 _frame.update { it.withClock(scenarioClock) }
                 handleDueTimelineEvents()
             }
@@ -1621,8 +1623,12 @@ class AgentExperienceViewModel
 
         private fun setClockModeLive() {
             clockMode = ScenarioClockMode.Live
-            normalClockElapsedMs = 0L
+            resetLiveClockAnchor()
             _frame.update { it.copy(clockMode = clockMode) }
+        }
+
+        private fun resetLiveClockAnchor() {
+            liveClockAnchorMs = SystemClock.elapsedRealtime()
         }
 
         private fun shouldHoldTimelineEvent(event: ScenarioTimelineEvent): Boolean =
