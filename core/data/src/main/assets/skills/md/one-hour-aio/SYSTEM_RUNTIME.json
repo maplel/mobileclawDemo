@@ -43,7 +43,7 @@
       "type": "notification",
       "source": "物业管家",
       "title": "车库临停提醒",
-      "body": "B2 西侧临停区 13:30 后短时检修，司机接送建议走东门。"
+      "body": "B2 西侧临停区 13:30 后短时检修，车辆进出建议走东门。"
     },
     {
       "scenarioId": "one_hour_aio",
