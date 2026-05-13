@@ -11,36 +11,6 @@ data class ActionOption(
 
 object ActionPromptCodec {
     const val MESSAGE_TOOL_NAME = "action_prompt"
-    private val PRESERVED_SHORT_REPLY_VALUES =
-        setOf(
-            "yes",
-            "no",
-            "y",
-            "n",
-            "ok",
-            "okay",
-            "confirm",
-            "cancel",
-            "stop",
-            "send",
-            "continue",
-            "allow",
-            "deny",
-            "later",
-            "manual",
-            "\u53d1\u9001",
-            "\u53d6\u6d88",
-            "\u786e\u8ba4",
-            "\u7ee7\u7eed",
-            "\u5141\u8bb8",
-            "\u62d2\u7edd",
-            "\u662f",
-            "\u5426",
-            "\u597d",
-            "\u53ef\u4ee5",
-            "\u7a0d\u540e",
-            "\u624b\u52a8\u8f93\u5165",
-        )
 
     fun resolveOptions(
         question: String,
@@ -77,7 +47,7 @@ object ActionPromptCodec {
         reply: String,
         options: List<ActionOption>,
     ): Boolean {
-        val normalizedReply = reply.trim()
+        val normalizedReply = cleanOptionText(reply)
         if (normalizedReply.isEmpty()) return false
         return normalize(options).any { option ->
             normalizedReply.equals(option.label, ignoreCase = true) ||
@@ -86,6 +56,22 @@ object ActionPromptCodec {
     }
 
     fun normalizeExplicitOptions(options: List<ActionOption>): List<ActionOption> = normalize(options)
+
+    fun cleanOptionText(value: String): String =
+        value
+            .trim()
+            .replace("**", "")
+            .replace("__", "")
+            .replace("`", "")
+            .replace(Regex("""\s*,?\s*or\s*$""", RegexOption.IGNORE_CASE), "")
+            .trim { char ->
+                char.isWhitespace() ||
+                    char == '`' ||
+                    char == '*' ||
+                    char == '_' ||
+                    char == '"' ||
+                    char == '\''
+            }.trim()
 
     private fun parseRoot(raw: String): List<ActionOption> =
         runCatching {
@@ -134,41 +120,12 @@ object ActionPromptCodec {
     private fun normalize(options: List<ActionOption>): List<ActionOption> =
         options
             .mapNotNull { option ->
-                val label = option.label.trim()
-                val rawValue = option.value.trim().ifBlank { label }
-                val value = normalizeReplyValue(label, rawValue)
+                val rawLabel = cleanOptionText(option.label)
+                val label = rawLabel
+                val cleanedValue = cleanOptionText(option.value)
+                val value = cleanedValue.ifBlank { label }
                 if (label.isEmpty() || value.isEmpty()) null else ActionOption(label = label, value = value)
             }.distinctBy { "${it.label.lowercase()}|${it.value.lowercase()}" }
-
-    private fun normalizeReplyValue(
-        label: String,
-        value: String,
-    ): String {
-        val trimmedLabel = label.trim()
-        val trimmedValue = value.trim().ifBlank { trimmedLabel }
-        if (trimmedLabel.isEmpty()) return trimmedValue
-        if (trimmedValue.isEmpty()) return trimmedLabel
-
-        val lowerValue = trimmedValue.lowercase()
-        if (lowerValue in PRESERVED_SHORT_REPLY_VALUES) return trimmedValue
-
-        val looksMachineValue =
-            trimmedValue.contains('_') ||
-                trimmedValue.contains("::") ||
-                trimmedValue.matches(Regex("^[a-z]+(?:_[a-z0-9]+)+$")) ||
-                trimmedValue.matches(Regex("^[a-z]+(?:[A-Z][a-z0-9]+)+$")) ||
-                trimmedValue.matches(Regex("^(get|open|call|read|send|check|spawn|publish)_[a-z0-9_]+$"))
-
-        if (looksMachineValue) return trimmedLabel
-
-        val labelHasChinese = containsChinese(trimmedLabel)
-        val valueIsAsciiWord = trimmedValue.all { it.code in 32..126 } && trimmedValue.none { it.isWhitespace() }
-        if (labelHasChinese && valueIsAsciiWord && lowerValue !in PRESERVED_SHORT_REPLY_VALUES) {
-            return trimmedLabel
-        }
-
-        return trimmedValue
-    }
 
     private fun inferBinaryOptions(question: String): List<ActionOption> {
         val trimmed = question.trim()

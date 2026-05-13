@@ -46,12 +46,8 @@ class CreateCalendarEventTool @Inject constructor(
             val location = obj.optString("location", "")
             val description = obj.optString("description", "")
 
-            val success = bridge.system.createCalendarEvent(title, startTime, endTime, location, description)
-            if (success) {
-                ToolResult(ok = true, message = "Calendar event '$title' created for $startTime.")
-            } else {
-                ToolResult(ok = false, message = "Failed to create calendar event '$title': system returned false.")
-            }
+            bridge.system.createCalendarEvent(title, startTime, endTime, location, description)
+            ToolResult(ok = true, message = "Calendar event '$title' created for $startTime.")
         } catch (e: Exception) {
             ToolResult(ok = false, message = "Failed to create calendar event: ${e.message}")
         }

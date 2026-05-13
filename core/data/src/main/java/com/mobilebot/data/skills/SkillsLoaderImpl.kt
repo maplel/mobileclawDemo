@@ -16,7 +16,7 @@ class SkillsLoaderImpl @Inject constructor(
 
     override fun activePrompt(): String {
         val raw = runCatching {
-            context.assets.open("skills/demo/SKILL.md").bufferedReader().use { it.readText() }
+            context.assets.open("skills/interaction/SKILL.md").bufferedReader().use { it.readText() }
         }.getOrDefault("")
         val parsed = SkillMdParser.splitFrontmatterAndBody(raw)
         return parsed?.body?.trim() ?: raw.trim()
@@ -24,7 +24,7 @@ class SkillsLoaderImpl @Inject constructor(
 
     override fun alwaysSkillManifest(): SkillManifest? {
         val raw = runCatching {
-            context.assets.open("skills/demo/SKILL.md").bufferedReader().use { it.readText() }
+            context.assets.open("skills/interaction/SKILL.md").bufferedReader().use { it.readText() }
         }.getOrDefault("")
         if (raw.isBlank()) return null
 

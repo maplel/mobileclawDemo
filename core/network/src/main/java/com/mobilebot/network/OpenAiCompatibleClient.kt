@@ -38,7 +38,7 @@ constructor() : LlmClient {
             .build()
     }
 
-    override var defaultModel: String = "gemini-2.0-flash"
+    override var defaultModel: String = "gemini-2.5-flash"
 
     var apiKey: String = ""
     var baseUrl: String = "https://generativelanguage.googleapis.com/v1beta/openai"
@@ -129,16 +129,6 @@ constructor() : LlmClient {
 
     private fun isTransientError(e: IOException): Boolean {
         val msg = e.message?.lowercase().orEmpty()
-
-        // Handle formatted HTTP errors (e.g. "HTTP 500: ...")
-        if (msg.startsWith("http ")) {
-            val code = msg.substringAfter("http ").substringBefore(":").toIntOrNull()
-            if (code != null) {
-                // 429 Too Many Requests, 5xx Server Errors (500, 502, 503, 504, 529, etc.)
-                if (code == 429 || code >= 500) return true
-            }
-        }
-
         return msg.contains("unable to resolve host") ||
             msg.contains("no address associated") ||
             msg.contains("failed to connect") ||
@@ -159,12 +149,6 @@ constructor() : LlmClient {
                 "网络连接超时：服务器响应时间过长。请稍后重试。\n(Connection timed out: ${e.message})"
             msg.contains("connection refused") || msg.contains("failed to connect") ->
                 "无法连接到服务器。请检查网络设置后重试。\n(Connection failed: ${e.message})"
-            msg.startsWith("http 429") ->
-                "请求过于频繁，请稍后再试。\n(Rate limited: ${e.message})"
-            msg.startsWith("http 529") ->
-                "服务器繁忙，请稍后再试。\n(Server overloaded: ${e.message})"
-            msg.startsWith("http 5") ->
-                "服务器暂时不可用，请稍后再试。\n(Server error: ${e.message})"
             else -> e.message ?: "网络请求失败"
         }
         return IOException(friendly, e)
@@ -442,7 +426,10 @@ constructor() : LlmClient {
                                         "function",
                                         JSONObject()
                                             .put("name", fnName)
-                                            .put("arguments", tc.argumentsJson.ifBlank { "{}" }),
+                                            .put(
+                                                "arguments",
+                                                ToolCallArgumentNormalizer.normalize(tc.argumentsJson),
+                                            ),
                                     ),
                             )
                         }
@@ -452,15 +439,12 @@ constructor() : LlmClient {
                             o.put("content", trimmed)
                         } else {
                             o.put("tool_calls", tcArr)
-                            // OpenAI doesn't like both tool_calls and empty content in some providers
                             if (trimmed.isNotEmpty()) {
                                 o.put("content", trimmed)
-                            } else {
-                                o.put("content", JSONObject.NULL)
                             }
                         }
 
-                        if (!o.has("tool_calls") && (!o.has("content") || o.isNull("content"))) continue
+                        if (!o.has("tool_calls") && !o.has("content")) continue
                         result.put(o)
                     } else {
                         if (trimmed.isEmpty()) continue
@@ -473,12 +457,6 @@ constructor() : LlmClient {
                     val rawId = m.toolCallId?.trim().orEmpty()
                     if (rawId.isEmpty()) {
                         Log.w(TAG, "drop tool message without tool_call_id")
-                        continue
-                    }
-
-                    // Check if this tool_call_id was actually defined in previous assistant messages
-                    if (!toolCallIdToName.containsKey(rawId)) {
-                        Log.w(TAG, "drop tool result for unknown tool_call_id: $rawId")
                         continue
                     }
 
@@ -540,9 +518,9 @@ constructor() : LlmClient {
 
             val argumentsJson =
                 if (fn != null) {
-                    extractFunctionArgumentsJson(fn)
+                    ToolCallArgumentNormalizer.normalize(extractFunctionArgumentsJson(fn))
                 } else {
-                    item.optString("arguments", "").trim().ifEmpty { "{}" }
+                    ToolCallArgumentNormalizer.normalize(item.optString("arguments", ""))
                 }
 
             out.add(
@@ -661,7 +639,7 @@ constructor() : LlmClient {
     companion object {
         private const val TAG = "OpenAiCompatReq"
         private const val FALLBACK_TOOL_FUNCTION_NAME = "unknown_tool"
-        private const val MAX_RETRIES = 5
+        private const val MAX_RETRIES = 3
         private const val RETRY_BASE_MS = 1000L
     }
 }

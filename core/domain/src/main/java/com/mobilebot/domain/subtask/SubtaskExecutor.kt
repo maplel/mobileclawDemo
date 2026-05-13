@@ -7,6 +7,7 @@ import com.mobilebot.domain.ForegroundController
 import com.mobilebot.domain.agent.CurrentSessionKeyProvider
 import com.mobilebot.domain.agent.RuntimeEvent
 import com.mobilebot.domain.agent.ToolCallAgentLoop
+import com.mobilebot.domain.memory.MemoryFacade
 import com.mobilebot.domain.repository.SessionRepository
 import com.mobilebot.model.OutboundMessage
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +46,7 @@ class SubtaskExecutor
         private val toolCallLoopProvider: Provider<ToolCallAgentLoop>,
         private val agentLoopProvider: Provider<AgentLoop>,
         private val sessions: SessionRepository,
+        private val memory: MemoryFacade,
         private val bus: MessageBus,
         private val sessionKeyProvider: CurrentSessionKeyProvider,
         private val foreground: ForegroundController,
@@ -77,9 +79,9 @@ class SubtaskExecutor
                 tasks[taskId] = state.copy(status = SubtaskStatus.RUNNING)
                 emitSubtaskEvent(parentChatId, taskId, "subtask_running", "Starting...")
                 try {
-                    val childSession = "subtask:${UUID.randomUUID()}"
+                    val childChatId = "subtask-$taskId-${UUID.randomUUID().toString().take(8)}"
+                    val childSession = "${ToolCallAgentLoop.CHANNEL}:$childChatId"
                     sessions.ensureSession(childSession)
-                    val childChatId = "subtask-$taskId"
                     toolCallLoopProvider.get().processUserMessage(
                         chatId = childChatId,
                         text = instruction,
@@ -132,11 +134,13 @@ class SubtaskExecutor
                     "subtask_tool_done" to "$label: ${event.toolName} — ${event.summary.take(100)}"
                 }
                 is RuntimeEvent.AssistantMessage -> "subtask_message" to event.text.take(200)
+                is RuntimeEvent.AssistantUpdate -> "subtask_message" to event.text.take(200)
                 is RuntimeEvent.StateChanged -> "subtask_state" to event.state
                 is RuntimeEvent.Error -> "subtask_error" to event.message
                 is RuntimeEvent.PlanReady -> "subtask_plan" to "Plan: ${event.goal} (${event.stepCount} steps)"
                 is RuntimeEvent.ApprovalRequired -> return
                 is RuntimeEvent.PlanPending -> return
+                is RuntimeEvent.ActionPromptRequired -> return
                 is RuntimeEvent.PlanStepUpdated -> "subtask_plan_step" to "Step ${event.stepId}: ${event.status}"
             }
             emitSubtaskEvent(parentChatId, taskId, type, content)

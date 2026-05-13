@@ -4,8 +4,8 @@ import com.mobilebot.data.approval.ApprovalRepositoryImpl
 import com.mobilebot.data.capabilities.AgentCapabilityStoreImpl
 import com.mobilebot.data.capabilities.AndroidCapabilityProbe
 import com.mobilebot.data.capabilities.AndroidRuntimeCapabilityProbe
+import com.mobilebot.data.memory.MemoryFacadeImpl
 import com.mobilebot.data.memory.MemoryFileRepositoryImpl
-import com.mobilebot.data.memory.PersistentMemoryManagerImpl
 import com.mobilebot.data.profile.UserProfileStoreImpl
 import com.mobilebot.data.session.SessionRepositoryImpl
 import com.mobilebot.data.settings.UserSettingsRepository
@@ -21,7 +21,7 @@ import com.mobilebot.domain.permissions.CapabilityApprovalGate
 import com.mobilebot.domain.permissions.DefaultCapabilityApprovalGate
 import com.mobilebot.domain.SkillsLoader
 import com.mobilebot.domain.ToolConfirmationGate
-import com.mobilebot.domain.memory.PersistentMemoryManager
+import com.mobilebot.domain.memory.MemoryFacade
 import com.mobilebot.domain.profile.UserProfileStore
 import com.mobilebot.domain.repository.ApprovalRepository
 import com.mobilebot.domain.repository.MemoryFileRepository
@@ -48,7 +48,7 @@ abstract class DataBindModule {
 
     @Binds
     @Singleton
-    abstract fun bindPersistentMemory(impl: PersistentMemoryManagerImpl): PersistentMemoryManager
+    abstract fun bindMemoryFacade(impl: MemoryFacadeImpl): MemoryFacade
 
     @Binds
     @Singleton

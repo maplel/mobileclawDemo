@@ -63,6 +63,19 @@ class SkillRegistry @Inject constructor() {
                 sb.appendLine("  <skill category=\"$category\">")
                 sb.appendLine("    <name>${m.id}</name>")
                 sb.appendLine("    <description>${m.description}</description>")
+                m.scenario?.let { scenario ->
+                    sb.appendLine("    <scenario id=\"${scenario.scenarioId}\" displayMode=\"${scenario.displayMode.value}\">")
+                    if (scenario.systemCapabilities.isNotEmpty()) {
+                        sb.appendLine("      <system_capabilities>${scenario.systemCapabilities.joinToString(", ")}</system_capabilities>")
+                    }
+                    if (scenario.decisionPoints.isNotEmpty()) {
+                        sb.appendLine("      <decision_points>${scenario.decisionPoints.joinToString(", ")}</decision_points>")
+                    }
+                    if (scenario.timelineHints.isNotEmpty()) {
+                        sb.appendLine("      <timeline_hints>${scenario.timelineHints.joinToString(", ")}</timeline_hints>")
+                    }
+                    sb.appendLine("    </scenario>")
+                }
                 sb.appendLine("  </skill>")
             }
         }

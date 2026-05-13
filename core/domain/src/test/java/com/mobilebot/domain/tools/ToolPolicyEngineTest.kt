@@ -4,7 +4,7 @@ import com.mobilebot.bridge.ConnectivityState
 import com.mobilebot.bridge.DeviceContextSnapshot
 import com.mobilebot.domain.testdoubles.AllCapabilitiesProbe
 import com.mobilebot.domain.testdoubles.AlwaysForegroundReader
-import com.mobilebot.domain.testdoubles.FakeDeviceCapabilityBridge
+import com.mobilebot.domain.testdoubles.RecordingDeviceCapabilityBridge
 import com.mobilebot.domain.testdoubles.NeverForegroundReader
 import com.mobilebot.domain.testdoubles.NoCapabilitiesProbe
 import com.mobilebot.model.ToolDefinition
@@ -35,7 +35,7 @@ class ToolPolicyEngineTest {
 
     @Test
     fun blocksToolWhenCapabilityMissing() = runBlocking {
-        val bridge = FakeDeviceCapabilityBridge()
+        val bridge = RecordingDeviceCapabilityBridge()
         val engine = ToolPolicyEngine(NoCapabilitiesProbe(), AlwaysForegroundReader(), bridge)
 
         val tool = makeTool(capabilities = setOf("browser.view"))
@@ -47,7 +47,7 @@ class ToolPolicyEngineTest {
 
     @Test
     fun blocksToolWhenForegroundRequiredButBackground() = runBlocking {
-        val bridge = FakeDeviceCapabilityBridge()
+        val bridge = RecordingDeviceCapabilityBridge()
         val engine = ToolPolicyEngine(AllCapabilitiesProbe(), NeverForegroundReader(), bridge)
 
         val tool = makeTool(policy = ToolExecutionPolicy(requiresForeground = true))
@@ -59,7 +59,7 @@ class ToolPolicyEngineTest {
 
     @Test
     fun blocksToolWhenConnectivityRequiredButOffline() = runBlocking {
-        val bridge = FakeDeviceCapabilityBridge()
+        val bridge = RecordingDeviceCapabilityBridge()
         bridge.stubAppState.snapshotValue = DeviceContextSnapshot(connectivity = ConnectivityState.NONE)
         val engine = ToolPolicyEngine(AllCapabilitiesProbe(), AlwaysForegroundReader(), bridge)
 
@@ -72,7 +72,7 @@ class ToolPolicyEngineTest {
 
     @Test
     fun allowsToolWhenAllConditionsMet() = runBlocking {
-        val bridge = FakeDeviceCapabilityBridge()
+        val bridge = RecordingDeviceCapabilityBridge()
         bridge.stubAppState.snapshotValue = DeviceContextSnapshot(connectivity = ConnectivityState.WIFI)
         val engine = ToolPolicyEngine(AllCapabilitiesProbe(), AlwaysForegroundReader(), bridge)
 
@@ -87,7 +87,7 @@ class ToolPolicyEngineTest {
 
     @Test
     fun allowsToolWithNoRequirements() = runBlocking {
-        val bridge = FakeDeviceCapabilityBridge()
+        val bridge = RecordingDeviceCapabilityBridge()
         val engine = ToolPolicyEngine(AllCapabilitiesProbe(), AlwaysForegroundReader(), bridge)
 
         val tool = makeTool()

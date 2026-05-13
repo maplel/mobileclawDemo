@@ -74,6 +74,9 @@ class UserSettingsRepositoryImpl
         override suspend fun getDeviceId(): String =
             prefs.getString(KEY_DEVICE, "android-device-1").orEmpty()
 
+        override suspend fun getProviderId(): String =
+            prefs.getString(KEY_PROVIDER, "").orEmpty()
+
         override suspend fun setApiKey(value: String) {
             prefs.edit().putString(KEY_API, value).apply()
         }
@@ -84,6 +87,10 @@ class UserSettingsRepositoryImpl
 
         override suspend fun setModel(value: String) {
             prefs.edit().putString(KEY_MODEL, value).apply()
+        }
+
+        override suspend fun setProviderId(value: String) {
+            prefs.edit().putString(KEY_PROVIDER, value).apply()
         }
 
         override suspend fun setDeviceId(value: String) {
@@ -100,6 +107,7 @@ class UserSettingsRepositoryImpl
             private const val KEY_API = "api_key"
             private const val KEY_BASE = "base_url"
             private const val KEY_MODEL = "model"
+            private const val KEY_PROVIDER = "provider_id"
             private const val KEY_DEVICE = "device_id"
             private const val KEY_HEARTBEAT = "heartbeat_enabled"
         }

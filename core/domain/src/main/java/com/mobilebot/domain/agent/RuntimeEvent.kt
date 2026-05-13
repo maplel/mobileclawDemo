@@ -14,6 +14,7 @@ sealed interface RuntimeEvent {
         val toolCallId: String,
         val success: Boolean,
         val summary: String,
+        val detail: String = summary,
     ) : RuntimeEvent
 
     data class ApprovalRequired(
@@ -24,12 +25,19 @@ sealed interface RuntimeEvent {
 
     data class AssistantMessage(val text: String) : RuntimeEvent
 
+    data class AssistantUpdate(val text: String) : RuntimeEvent
+
     data class PlanReady(val goal: String, val stepCount: Int) : RuntimeEvent
 
     data class Error(val message: String) : RuntimeEvent
 
     data class PlanPending(
         val plan: TodoListSnapshot,
+        val actions: List<ActionOption>,
+    ) : RuntimeEvent
+
+    data class ActionPromptRequired(
+        val promptText: String,
         val actions: List<ActionOption>,
     ) : RuntimeEvent
 

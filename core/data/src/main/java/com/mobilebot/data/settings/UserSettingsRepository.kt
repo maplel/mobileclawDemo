@@ -14,6 +14,8 @@ interface UserSettingsRepository {
 
     suspend fun getModel(): String
 
+    suspend fun getProviderId(): String
+
     suspend fun getDeviceId(): String
 
     suspend fun setApiKey(value: String)
@@ -21,6 +23,8 @@ interface UserSettingsRepository {
     suspend fun setBaseUrl(value: String)
 
     suspend fun setModel(value: String)
+
+    suspend fun setProviderId(value: String)
 
     suspend fun setDeviceId(value: String)
 

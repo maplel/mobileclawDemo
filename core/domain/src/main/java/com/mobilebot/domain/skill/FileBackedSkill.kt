@@ -39,6 +39,7 @@ object BundledSkillJsonParser {
                     requiredServices = extras.requiredServices,
                     composesSkills = extras.composesSkills,
                     userConfirmationPoints = extras.userConfirmationPoints,
+                    scenario = extras.scenario,
                 ),
             )
         }.getOrNull()
@@ -49,6 +50,7 @@ object BundledSkillJsonParser {
         val requiredServices: List<String> = emptyList(),
         val composesSkills: List<String> = emptyList(),
         val userConfirmationPoints: List<String> = emptyList(),
+        val scenario: ScenarioSkillSpec? = null,
     )
 
     private fun parseExtendedFields(o: org.json.JSONObject): ExtendedFields {
@@ -58,10 +60,33 @@ object BundledSkillJsonParser {
                 requiredServices = parseStringArrayFromObj(o, "requiredServices"),
                 composesSkills = parseStringArrayFromObj(o, "composesSkills"),
                 userConfirmationPoints = parseStringArrayFromObj(o, "userConfirmationPoints"),
+                scenario = parseScenario(o),
             )
         } catch (_: Exception) {
             ExtendedFields()
         }
+    }
+
+    private fun parseScenario(o: org.json.JSONObject): ScenarioSkillSpec? {
+        val scenario = o.optJSONObject("scenario")
+        val scenarioId = o.optString("scenarioId", "").trim()
+            .ifEmpty { scenario?.optString("id", "")?.trim().orEmpty() }
+            .ifEmpty { return null }
+        val displayMode = o.optString("displayMode", "").trim()
+            .ifEmpty { scenario?.optString("displayMode", "")?.trim().orEmpty() }
+        return ScenarioSkillSpec(
+            scenarioId = scenarioId,
+            displayMode = ScenarioDisplayMode.fromString(displayMode),
+            systemCapabilities = parseStringArrayFromObj(o, "systemCapabilities").ifEmpty {
+                scenario?.let { parseStringArrayFromObj(it, "systemCapabilities") } ?: emptyList()
+            },
+            decisionPoints = parseStringArrayFromObj(o, "decisionPoints").ifEmpty {
+                scenario?.let { parseStringArrayFromObj(it, "decisionPoints") } ?: emptyList()
+            },
+            timelineHints = parseStringArrayFromObj(o, "timelineHints").ifEmpty {
+                scenario?.let { parseStringArrayFromObj(it, "timelineHints") } ?: emptyList()
+            },
+        )
     }
 
     private fun parseStringArray(arr: org.json.JSONArray): List<String> = buildList {

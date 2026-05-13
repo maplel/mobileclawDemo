@@ -20,7 +20,7 @@ class SkillTool @Inject constructor(
     private val skillExecutor: SkillExecutor,
 ) : Tool {
 
-    override val name: String = "use_skill"
+    override val name: String = NAME
 
     override val definition: ToolDefinition = ToolDefinition(
         name = name,
@@ -73,5 +73,9 @@ class SkillTool @Inject constructor(
         } catch (e: Exception) {
             ToolResult(ok = false, message = "Failed to invoke skill: ${e.message}")
         }
+    }
+
+    companion object {
+        const val NAME = "use_skill"
     }
 }

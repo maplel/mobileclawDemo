@@ -41,6 +41,7 @@ class SubtaskExecutorTest {
             toolCallLoopProvider = javax.inject.Provider { throw UnsupportedOperationException("stub") },
             agentLoopProvider = javax.inject.Provider { throw UnsupportedOperationException("stub") },
             sessions = StubSessionRepository(),
+            memory = StubMemoryFacade(),
             bus = com.mobilebot.bus.MessageBus(),
             sessionKeyProvider = com.mobilebot.domain.agent.CurrentSessionKeyProvider(),
             foreground = noopForeground,
@@ -59,4 +60,14 @@ private class StubSessionRepository : com.mobilebot.domain.repository.SessionRep
     override suspend fun appendToolMessage(sessionKey: String, content: String, toolCallId: String, toolName: String) {}
     override suspend fun ensureSession(sessionKey: String) {}
     override suspend fun deleteSession(sessionKey: String) {}
+}
+
+private class StubMemoryFacade : com.mobilebot.domain.memory.MemoryFacade {
+    override suspend fun getWorkingMemory(sessionKey: String) = com.mobilebot.domain.memory.WorkingMemory()
+    override suspend fun updateWorkingMemory(sessionKey: String, update: com.mobilebot.domain.memory.WorkingMemoryUpdate) {}
+    override suspend fun appendToolTrace(sessionKey: String, event: com.mobilebot.domain.memory.ToolTraceEvent) {}
+    override suspend fun getSessionSummary(sessionKey: String) = null
+    override suspend fun updateSessionSummary(sessionKey: String, summary: String) {}
+    override suspend fun retrieveFacts(query: String, limit: Int) = emptyList<com.mobilebot.domain.memory.MemoryFact>()
+    override suspend fun writeFact(fact: com.mobilebot.domain.memory.MemoryFact) {}
 }

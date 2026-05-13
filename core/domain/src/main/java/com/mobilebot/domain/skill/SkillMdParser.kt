@@ -48,110 +48,42 @@ object SkillMdParser {
 
     private fun parseYaml(yaml: String): Map<String, Any> {
         val result = mutableMapOf<String, Any>()
-        val lines = yaml.lines()
-        var i = 0
-
-        var pendingListKey: String? = null
-        var pendingListParent: String? = null
+        var currentKey: String? = null
         val currentList = mutableListOf<String>()
-        var currentMapKey: String? = null
 
-        fun nestedMap(key: String): MutableMap<String, Any> {
-            @Suppress("UNCHECKED_CAST")
-            return result.getOrPut(key) { mutableMapOf<String, Any>() } as MutableMap<String, Any>
-        }
+        for (line in yaml.lines()) {
+            val stripped = line.trimEnd()
+            if (stripped.isBlank()) continue
 
-        fun flushList() {
-            val key = pendingListKey ?: return
-            if (currentList.isNotEmpty()) {
-                val parent = pendingListParent
-                if (parent == null) {
-                    result[key] = currentList.toList()
-                } else {
-                    nestedMap(parent)[key] = currentList.toList()
-                }
-            }
-            pendingListKey = null
-            pendingListParent = null
-            currentList.clear()
-        }
-
-        while (i < lines.size) {
-            val raw = lines[i]
-            val stripped = raw.trimEnd()
-            if (stripped.isBlank()) {
-                i++
-                continue
-            }
-
-            val indent = raw.takeWhile { it == ' ' }.length
-            val trimmed = stripped.trimStart()
-
-            if (trimmed.startsWith("- ")) {
-                val value = trimmed.removePrefix("- ").trim().cleanYamlValue()
+            if (stripped.startsWith("  - ") || stripped.startsWith("    - ")) {
+                val value = stripped.trimStart().removePrefix("- ").trim()
                 if (value.isNotEmpty()) currentList.add(value)
-                i++
                 continue
             }
 
-            flushList()
-
-            val colonIdx = trimmed.indexOf(':')
-            if (colonIdx < 0) {
-                i++
-                continue
+            if (currentKey != null && currentList.isNotEmpty()) {
+                result[currentKey] = currentList.toList()
+                currentList.clear()
             }
+            currentKey = null
 
-            val key = trimmed.substring(0, colonIdx).trim()
-            val value = trimmed.substring(colonIdx + 1).trim()
-            val parent = currentMapKey.takeIf { indent > 0 }
+            val colonIdx = stripped.indexOf(':')
+            if (colonIdx < 0) continue
 
-            when {
-                value.isBlockScalarMarker() -> {
-                    val blockIndent = indent
-                    val blockLines = mutableListOf<String>()
-                    i++
-                    while (i < lines.size) {
-                        val nextRaw = lines[i]
-                        val nextIndent = nextRaw.takeWhile { it == ' ' }.length
-                        if (nextRaw.isNotBlank() && nextIndent <= blockIndent) break
-                        blockLines.add(nextRaw.trim())
-                        i++
-                    }
-                    val text = if (value.startsWith("|")) {
-                        blockLines.joinToString("\n").trim()
-                    } else {
-                        blockLines.joinToString(" ").replace(Regex("\\s+"), " ").trim()
-                    }
-                    if (parent == null) {
-                        result[key] = text
-                    } else {
-                        nestedMap(parent)[key] = text
-                    }
-                    continue
-                }
+            val key = stripped.substring(0, colonIdx).trim()
+            val value = stripped.substring(colonIdx + 1).trim()
 
-                value.isEmpty() -> {
-                    pendingListKey = key
-                    pendingListParent = parent
-                    if (indent == 0) currentMapKey = key
-                }
-
-                else -> {
-                    val cleanValue = value.cleanYamlValue()
-                    if (parent == null) {
-                        result[key] = cleanValue
-                        if (indent == 0) currentMapKey = null
-                    } else {
-                        nestedMap(parent)[key] = cleanValue
-                    }
-                }
+            if (value.isEmpty()) {
+                currentKey = key
+            } else {
+                result[key] = value.removeSurrounding("\"").removeSurrounding("'")
             }
-
-            i++
         }
 
-        flushList()
+        if (currentKey != null && currentList.isNotEmpty()) {
+            result[currentKey] = currentList.toList()
+        }
+
         return result
     }
 
@@ -181,8 +113,7 @@ object SkillMdParser {
                 composesSkills = fm.getStringList("composes-skills"),
                 userConfirmationPoints = fm.getStringList("user-confirmation-points"),
                 requiredServices = fm.getStringList("required-services"),
-                references = fm.getStringList("references"),
-                runtimeContext = fm.getStringList("runtime-context"),
+                scenario = parseScenario(fm),
                 always = fm.getString("always")?.toBooleanStrictOrNull() ?: false,
                 disableModelInvocation = fm.getString("disable-model-invocation")?.toBooleanStrictOrNull() ?: false,
                 promptSummary = fm.getString("prompt-summary") ?: description,
@@ -198,12 +129,6 @@ object SkillMdParser {
             "CRITICAL" -> ToolRisk.CRITICAL
             else -> ToolRisk.LOW
         }
-
-    private fun String.cleanYamlValue(): String =
-        removeSurrounding("\"").removeSurrounding("'")
-
-    private fun String.isBlockScalarMarker(): Boolean =
-        this == ">" || this == ">-" || this == "|" || this == "|-"
 
     private fun parseRequirements(fm: Map<String, Any>): SkillRequirements {
         val reqMap = fm.getNestedMap("requires")
@@ -223,6 +148,25 @@ object SkillMdParser {
         val deviceState = condMap.getString("device-state")
         if (time == null && locationType == null && deviceState == null) return null
         return SkillConditions(time = time, locationType = locationType, deviceState = deviceState)
+    }
+
+    private fun parseScenario(fm: Map<String, Any>): ScenarioSkillSpec? {
+        val scenarioId = fm.getString("scenario-id")
+            ?: fm.getString("scenarioId")
+            ?: return null
+        return ScenarioSkillSpec(
+            scenarioId = scenarioId,
+            displayMode = ScenarioDisplayMode.fromString(fm.getString("display-mode") ?: fm.getString("displayMode")),
+            systemCapabilities = fm.getStringList("system-capabilities").ifEmpty {
+                fm.getStringList("systemCapabilities")
+            },
+            decisionPoints = fm.getStringList("decision-points").ifEmpty {
+                fm.getStringList("decisionPoints")
+            },
+            timelineHints = fm.getStringList("timeline-hints").ifEmpty {
+                fm.getStringList("timelineHints")
+            },
+        )
     }
 
     @Suppress("UNCHECKED_CAST")

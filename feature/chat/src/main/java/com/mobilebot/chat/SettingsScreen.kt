@@ -4,11 +4,9 @@ package com.mobilebot.chat
 
 import android.Manifest
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,37 +19,30 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -74,7 +65,6 @@ fun SettingsScreen(
     val selectedProvider by viewModel.selectedProvider.collectAsState()
     val capVersion by viewModel.capabilityVersion.collectAsState()
     val context = LocalContext.current
-    val view = LocalView.current
 
     val capabilityStates = remember(capVersion) {
         AgentCapability.entries.associateWith { viewModel.isCapabilityGranted(it) }
@@ -86,20 +76,12 @@ fun SettingsScreen(
 
     Scaffold(
         modifier = Modifier.semantics { testTagsAsResourceId = true },
-        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Settings", color = MaterialTheme.colorScheme.onBackground) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                ),
+                title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -151,39 +133,6 @@ fun SettingsScreen(
                 onDeviceIdChange = viewModel::updateDeviceId,
                 onHeartbeatChange = viewModel::updateHeartbeat,
             )
-
-            OutlinedButton(
-                onClick = {
-                    // Critical Fix: Check for 'Display over other apps' permission
-                    if (!Settings.canDrawOverlays(context)) {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        )
-                        context.startActivity(intent)
-                        return@OutlinedButton
-                    }
-
-                    // 1. Automatically go to Home screen
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(homeIntent)
-
-                    // 2. Trigger the floating overlay service via implicit intent (to avoid cross-module class dependency)
-                    view.postDelayed({
-                        val intent = Intent("com.mobilebot.action.CHAT_OVERLAY").apply {
-                            setPackage(context.packageName)
-                        }
-                        context.startService(intent)
-                    }, 2000)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
-            ) {
-                Text("Auto-Test Desktop Popup", color = MaterialTheme.colorScheme.primary)
-            }
 
             Button(
                 onClick = viewModel::save,
@@ -382,13 +331,7 @@ private fun SectionCard(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 title,
@@ -401,6 +344,11 @@ private fun SectionCard(
     }
 }
 
+/**
+ * Maps an [AgentCapability] to Android runtime permissions that should be
+ * requested when the capability is toggled ON.  Returns empty for capabilities
+ * that have no corresponding runtime permission (e.g. clipboard, share).
+ */
 private fun androidPermissionsFor(capability: AgentCapability): Array<String> =
     when (capability) {
         AgentCapability.LOCATION ->
@@ -410,7 +358,6 @@ private fun androidPermissionsFor(capability: AgentCapability): Array<String> =
             )
         AgentCapability.CONTACTS -> arrayOf(Manifest.permission.READ_CONTACTS)
         AgentCapability.SMS -> arrayOf(Manifest.permission.SEND_SMS)
-        AgentCapability.CALENDAR -> arrayOf(Manifest.permission.READ_CALENDAR)
         AgentCapability.CAMERA -> arrayOf(Manifest.permission.CAMERA)
         else -> emptyArray()
     }

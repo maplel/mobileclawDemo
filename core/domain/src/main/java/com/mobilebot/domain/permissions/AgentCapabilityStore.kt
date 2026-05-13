@@ -15,7 +15,6 @@ enum class AgentCapability(
     LOCATION("Location", "Access GPS for location-based tasks", setOf("location.coarse")),
     CONTACTS("Contacts", "Read contacts for communication", setOf("contacts.read")),
     SMS("SMS", "Send text messages on your behalf", setOf("messaging.sms", "messaging.sms.send")),
-    CALENDAR("Calendar", "Read calendar events for schedule checks", setOf("calendar.read")),
     NOTIFICATIONS("Notification Reader", "Read and mirror system notifications", setOf("notifications.read")),
     FILES("File Access", "Read and write workspace files", setOf("files.workspace")),
     BROWSER("Browser", "Open URLs in external browser", setOf("browser.view")),
