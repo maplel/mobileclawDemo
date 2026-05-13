@@ -37,14 +37,11 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.SEND_SMS" />
-    <uses-permission android:name="android.permission.READ_CALENDAR" />
-    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:name=".MobileBotApplication"
@@ -70,28 +67,6 @@
                 <data android:mimeType="text/*" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".PopupChatActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:launchMode="singleInstance"
-            android:taskAffinity="com.mobilebot.chat.popup"
-            android:theme="@style/Theme.MobileBot.Translucent"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="com.mobilebot.action.POPUP_CHAT" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
-        <service
-            android:name=".service.ChatOverlayService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.mobilebot.action.CHAT_OVERLAY" />
-            </intent-filter>
-        </service>
 
         <service
             android:name=".service.AgentForegroundService"

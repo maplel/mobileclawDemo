@@ -34,6 +34,9 @@ internal object UserSettingsResolution {
     ): String {
         if (!keyPresent) return LlmEndpointDefaults.DEFAULT_GEMINI_MODEL
         val s = stored.trim().ifEmpty { LlmEndpointDefaults.DEFAULT_GEMINI_MODEL }
+        if (s.equals("gemini-2.0-flash", ignoreCase = true)) {
+            return LlmEndpointDefaults.DEFAULT_GEMINI_MODEL
+        }
         // 旧版预设/手填的 glm-4.7 易与计费/资源包不匹配；统一映射为当前默认 Flash
         if (s.equals("glm-4.7", ignoreCase = true)) {
             return LlmEndpointDefaults.DEFAULT_GLM_MODEL

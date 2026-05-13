@@ -1,7 +1,6 @@
 package com.mobilebot.bridge.impl
 
 import android.content.ActivityNotFoundException
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -9,9 +8,7 @@ import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.provider.AlarmClock
-import android.provider.CalendarContract
 import android.provider.Settings
-import android.util.Log
 import com.mobilebot.bridge.AppInfo
 import com.mobilebot.bridge.SystemBridge
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -121,117 +118,6 @@ class AndroidSystemBridge
                 .take(10)
         }
 
-        override fun createCalendarEvent(
-            title: String,
-            startTime: String,
-            endTime: String,
-            location: String,
-            description: String,
-        ): Boolean {
-            return try {
-                val values = ContentValues().apply {
-                    put(CalendarContract.Events.DTSTART, parseIsoToMillis(startTime))
-                    put(CalendarContract.Events.DTEND, parseIsoToMillis(endTime))
-                    put(CalendarContract.Events.TITLE, title)
-                    put(CalendarContract.Events.DESCRIPTION, description)
-                    put(CalendarContract.Events.EVENT_LOCATION, location)
-                    put(CalendarContract.Events.CALENDAR_ID, getDefaultCalendarId())
-                    put(CalendarContract.Events.EVENT_TIMEZONE, "Asia/Shanghai")
-                }
-                val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
-                if (uri != null) {
-                    Log.d(TAG, "Calendar event created: $title at $startTime (uri=$uri)")
-                    true
-                } else {
-                    Log.w(TAG, "Failed to insert calendar event: contentResolver returned null")
-                    false
-                }
-            } catch (e: SecurityException) {
-                Log.w(TAG, "No calendar permission: ${e.message}")
-                false
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to create calendar event: ${e.message}")
-                false
-            }
-        }
-
-        override fun queryCalendarEvents(startDate: String, endDate: String): String? {
-            return try {
-                val startMillis = parseDateToMillis(startDate)
-                val endMillis = parseDateToMillis(endDate) + 86_400_000L
-                val projection = arrayOf(
-                    CalendarContract.Events.TITLE,
-                    CalendarContract.Events.DTSTART,
-                    CalendarContract.Events.DTEND,
-                    CalendarContract.Events.EVENT_LOCATION,
-                    CalendarContract.Events.DESCRIPTION,
-                )
-                val cursor = context.contentResolver.query(
-                    CalendarContract.Events.CONTENT_URI,
-                    projection,
-                    "${CalendarContract.Events.DTSTART} >= ? AND ${CalendarContract.Events.DTSTART} < ?",
-                    arrayOf(startMillis.toString(), endMillis.toString()),
-                    "${CalendarContract.Events.DTSTART} ASC",
-                )
-                cursor?.use {
-                    val events = org.json.JSONArray()
-                    while (it.moveToNext()) {
-                        val event = org.json.JSONObject().apply {
-                            put("title", it.getString(0) ?: "")
-                            put("startTime", it.getString(1) ?: "")
-                            put("endTime", it.getString(2) ?: "")
-                            put("location", it.getString(3) ?: "")
-                            put("description", it.getString(4) ?: "")
-                        }
-                        events.put(event)
-                    }
-                    if (events.length() == 0) null else events.toString()
-                }
-            } catch (e: SecurityException) {
-                Log.w(TAG, "No calendar permission: ${e.message}")
-                null
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to query calendar events: ${e.message}")
-                null
-            }
-        }
-
-        private fun getDefaultCalendarId(): Long {
-            val projection = arrayOf(CalendarContract.Calendars._ID)
-            val cursor = context.contentResolver.query(
-                CalendarContract.Calendars.CONTENT_URI,
-                projection,
-                null, null, null,
-            )
-            cursor?.use {
-                if (it.moveToFirst()) return it.getLong(0)
-            }
-            return 1L
-        }
-
-        private fun parseIsoToMillis(iso: String): Long {
-            val formats = listOf(
-                java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", java.util.Locale.US),
-                java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US),
-                java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US),
-            )
-            for (fmt in formats) {
-                try {
-                    return fmt.parse(iso)?.time ?: continue
-                } catch (_: Exception) { continue }
-            }
-            return System.currentTimeMillis()
-        }
-
-        private fun parseDateToMillis(date: String): Long {
-            return try {
-                val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                fmt.parse(date)?.time ?: System.currentTimeMillis()
-            } catch (_: Exception) {
-                System.currentTimeMillis()
-            }
-        }
-
         private fun fireIntent(intent: Intent): Boolean =
             try {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -242,8 +128,4 @@ class AndroidSystemBridge
             } catch (_: Exception) {
                 false
             }
-
-        private companion object {
-            private const val TAG = "AndroidSystemBridge"
-        }
     }

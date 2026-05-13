@@ -15,7 +15,7 @@ object LlmEndpointDefaults {
     /** MiniMax OpenAI-compatible API ([docs](https://www.minimaxi.com/)). */
     const val MINIMAX_OPENAI_COMPAT_BASE = "https://api.minimaxi.com/v1"
 
-    const val DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+    const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 
     /** Bitexing 上常用 Gemini 模型 id（以控制台为准） */
     const val BITEXING_GEMINI_25_PRO = "gemini-2.5-pro"

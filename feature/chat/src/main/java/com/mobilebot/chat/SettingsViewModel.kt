@@ -73,6 +73,9 @@ enum class LlmProvider(
     ;
 
     companion object {
+        fun fromId(id: String): LlmProvider? =
+            entries.firstOrNull { it.name.equals(id.trim(), ignoreCase = true) }
+
         fun fromBaseUrl(url: String): LlmProvider? =
             entries.firstOrNull { url.startsWith(it.baseUrl, ignoreCase = true) }
     }
@@ -130,7 +133,8 @@ class SettingsViewModel
             _model.value = settings.getModel()
             _deviceId.value = settings.getDeviceId()
             _heartbeat.value = settings.getHeartbeatEnabled()
-            _selectedProvider.value = LlmProvider.fromBaseUrl(_baseUrl.value)
+            _selectedProvider.value =
+                LlmProvider.fromId(settings.getProviderId()) ?: LlmProvider.fromBaseUrl(_baseUrl.value)
         }
 
         fun updateApiKey(v: String) {
@@ -139,7 +143,7 @@ class SettingsViewModel
 
         fun updateBaseUrl(v: String) {
             _baseUrl.value = v
-            _selectedProvider.value = LlmProvider.fromBaseUrl(v)
+            LlmProvider.fromBaseUrl(v)?.let { _selectedProvider.value = it }
         }
 
         fun updateModel(v: String) {
@@ -165,6 +169,7 @@ class SettingsViewModel
                 settings.setApiKey(_apiKey.value.trim())
                 settings.setBaseUrl(_baseUrl.value.trim())
                 settings.setModel(_model.value.trim())
+                settings.setProviderId(_selectedProvider.value?.name.orEmpty())
                 settings.setDeviceId(_deviceId.value.trim().ifEmpty { "android-device-1" })
                 settings.setHeartbeatEnabled(_heartbeat.value)
                 heartbeatScheduler.applyHeartbeat(_heartbeat.value)

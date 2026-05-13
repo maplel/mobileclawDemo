@@ -1,11 +1,8 @@
 package com.mobilebot.service
 
 import android.app.Notification
-import android.content.Intent
-import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.util.Log
 import com.mobilebot.bridge.NotificationHistoryStore
 import com.mobilebot.bridge.NotificationItem
 import dagger.hilt.android.AndroidEntryPoint
@@ -38,22 +35,6 @@ class MobileBotNotificationListenerService : NotificationListenerService() {
     private fun onPosted(sbn: StatusBarNotification) {
         val item = sbn.toItem()
         notificationHistoryStore.onPosted(item, sbn.key)
-
-        // --- ACTIVE INTERVENTION LOGIC ---
-        // Trigger the system-level popup if '洗狗' (wash dog) is detected in the message
-        val triggerKeyword = "洗狗"
-        if (item.title.contains(triggerKeyword) || item.text.contains(triggerKeyword)) {
-            Log.d("MobileBot", "Keyword '$triggerKeyword' detected in notification! Triggering popup.")
-            
-            // We need to ensure overlay permission is granted to pop up from background
-            // Trigger system-level floating chat overlay via implicit intent
-            val overlayIntent = Intent("com.mobilebot.action.CHAT_OVERLAY").apply {
-                setPackage(packageName)
-            }
-            startService(overlayIntent)
-            } else {
-                Log.w("MobileBot", "Cannot trigger popup: Overlay permission not granted.")
-            }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {

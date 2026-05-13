@@ -1,46 +1,43 @@
 package com.mobilebot.domain.skill
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class SkillMdParserTest {
     @Test
-    fun parsesBlockScalarDescriptionNestedRequirementsAndReferences() {
-        val content =
-            """
+    fun parsesScenarioSkillMetadata() {
+        val markdown = """
             ---
-            name: arrange-pet-store-service
-            description: >-
-              编排宠物店洗护预约。
-              不用于泛泛宠物知识问答。
-            category: life-service
+            name: pet-grooming
+            description: "Pet grooming scenario"
+            category: scenario
             allowed-tools:
-              - call_service
-              - query_calendar
-            requires:
-              connectivity: true
-              permissions:
-                - android.permission.ACCESS_FINE_LOCATION
-            references:
-              - references/mock-pet-store-data.md
-              - references/decision-nodes.md
+              - device_system
+            scenario-id: pet-grooming
+            display-mode: fullscreen
+            system-capabilities:
+              - sms
+              - location
+            decision-points:
+              - confirm_schedule_change
+            timeline-hints:
+              - pickup_confirmed
+              - home_confirmed
             ---
 
-            # Body
-            """.trimIndent()
+            ## Body
+        """.trimIndent()
 
-        val skill = SkillMdParser.parse(content, SkillSource.BUNDLED_ASSET)
+        val skill = SkillMdParser.parse(markdown, SkillSource.BUNDLED_ASSET)
 
-        requireNotNull(skill)
-        assertEquals("arrange-pet-store-service", skill.manifest.id)
-        assertEquals("编排宠物店洗护预约。 不用于泛泛宠物知识问答。", skill.manifest.description)
-        assertEquals(listOf("call_service", "query_calendar"), skill.manifest.allowedTools)
-        assertTrue(skill.manifest.requires.connectivity)
-        assertEquals(listOf("android.permission.ACCESS_FINE_LOCATION"), skill.manifest.requires.permissions)
-        assertEquals(
-            listOf("references/mock-pet-store-data.md", "references/decision-nodes.md"),
-            skill.manifest.references,
-        )
+        assertNotNull(skill)
+        val scenario = skill!!.manifest.scenario
+        assertNotNull(scenario)
+        assertEquals("pet-grooming", scenario!!.scenarioId)
+        assertEquals(ScenarioDisplayMode.FULLSCREEN, scenario.displayMode)
+        assertEquals(listOf("sms", "location"), scenario.systemCapabilities)
+        assertEquals(listOf("confirm_schedule_change"), scenario.decisionPoints)
+        assertEquals(listOf("pickup_confirmed", "home_confirmed"), scenario.timelineHints)
     }
 }

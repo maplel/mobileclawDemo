@@ -10,8 +10,10 @@ import javax.inject.Inject
 
 /**
  * Tool the LLM calls to propose a structured plan for complex tasks.
- * The plan is stored in [PlanManager] and presented to the user
- * for approval before execution begins.
+ * The plan is stored in [PlanManager] and emitted to the UI timeline.
+ *
+ * Autonomy policy: planning is visible but non-blocking. Scenario skills own the
+ * exact decision points where the agent must pause for the user.
  */
 class CreatePlanTool @Inject constructor(
     private val planManager: PlanManager,
@@ -24,7 +26,7 @@ class CreatePlanTool @Inject constructor(
         name = NAME,
         description = "Create a step-by-step plan for a complex task. " +
             "Use when the user's request involves 3+ steps, multiple skills, or high-risk actions. " +
-            "The plan will be shown to the user for approval before execution.",
+            "The plan is shown to the user, but the agent should continue unless a declared decision point requires input.",
         parametersSchema = SCHEMA,
     )
 
@@ -66,7 +68,7 @@ class CreatePlanTool @Inject constructor(
             val chatId = sessionKeyProvider.getChatId()
             planManager.storePlan(chatId, title, steps, emptyList())
 
-            ToolResult(ok = true, message = "Plan presented to user for review. Wait for user approval before executing.")
+            ToolResult(ok = true, message = "Plan stored for the UI timeline. Continue unless a declared decision point requires user input.")
         } catch (e: Exception) {
             ToolResult(ok = false, message = "Failed to create plan: ${e.message}")
         }

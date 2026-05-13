@@ -1,0 +1,425 @@
+{
+  "contacts": [
+    {
+      "id": "owner-Y",
+      "displayName": "Y",
+      "relation": "owner",
+      "phone": "13800001111",
+      "aliases": ["Y", "owner", "user", "me", "我"],
+      "channels": ["sms", "phone"],
+      "capabilities": ["owner_decision"],
+      "messageKeywords": ["owner decision", "user decision"],
+      "trustLevel": "high",
+      "note": "Primary user and Kylin's owner."
+    },
+    {
+      "id": "service-petsmart",
+      "displayName": "PetSmart",
+      "relation": "pet_grooming_service",
+      "phone": "13800004445",
+      "aliases": ["PetSmart", "Pet Smart", "pet salon", "pet shop", "groomer", "grooming shop", "selected grooming shop", "+86-756-888-0001", "756-888-0001", "宠物店", "洗澡店"],
+      "channels": ["sms", "phone"],
+      "capabilities": ["pet_grooming", "bath", "de_shedding", "payment"],
+      "messageKeywords": ["PetSmart", "grooming", "bath", "de-shedding", "salon", "洗护", "洗澡", "除毛", "预约"],
+      "trustLevel": "high",
+      "note": "Preferred grooming shop for Kylin."
+    },
+    {
+      "id": "service-harbor-paws-salon",
+      "displayName": "Harbor Paws Salon",
+      "relation": "pet_grooming_service",
+      "phone": "+86-756-888-1111",
+      "aliases": ["Harbor Paws Salon", "Harbor Paws", "harbor-paws-salon", "+86-756-888-1111", "756-888-1111", "selected grooming shop", "宠物店", "洗澡店"],
+      "channels": ["sms", "phone"],
+      "capabilities": ["pet_grooming", "bath", "de_shedding", "payment"],
+      "messageKeywords": ["Harbor Paws Salon", "Harbor Paws", "grooming", "bath", "de-shedding", "salon", "洗护", "洗澡", "除毛", "去浮毛", "预约"],
+      "trustLevel": "medium",
+      "note": "Alternative grooming shop for Kylin when PetSmart cannot satisfy the preferred time and service scope."
+    },
+    {
+      "id": "private-driver",
+      "displayName": "Driver",
+      "relation": "private_driver",
+      "phone": "13800002222",
+      "aliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机", "私人司机"],
+      "channels": ["sms", "phone"],
+      "capabilities": ["pickup", "dropoff", "private_transport", "household_transport"],
+      "messageKeywords": ["driver", "private driver", "pickup", "pick up", "drop off", "downstairs", "home arrival", "司机", "接", "送", "楼下", "到家"],
+      "trustLevel": "high",
+      "note": "Y's private driver for user and household errands, including Kylin pickup and return."
+    },
+    {
+      "id": "family-contact",
+      "displayName": "Family Contact",
+      "relation": "family",
+      "phone": "13800003333",
+      "aliases": ["family", "home contact", "家人"],
+      "channels": ["sms", "phone"],
+      "capabilities": ["home_confirmation", "backup_contact"],
+      "messageKeywords": ["family", "home contact", "backup", "家人"],
+      "trustLevel": "high",
+      "note": "Backup home contact."
+    },
+    {
+      "id": "vet-clinic",
+      "displayName": "Vet Clinic",
+      "relation": "pet_health",
+      "phone": "13800005555",
+      "aliases": ["Vet Clinic", "vet", "animal hospital", "宠物医院"],
+      "channels": ["sms", "phone"],
+      "capabilities": ["pet_health", "urgent_care"],
+      "messageKeywords": ["vet", "animal hospital", "urgent care", "宠物医院"],
+      "trustLevel": "medium",
+      "note": "Kylin's pet health provider."
+    }
+  ],
+  "places": {
+    "pet_salon": {
+      "label": "pet_salon",
+      "address": "Pet salon near home",
+      "lat": 31.234,
+      "lng": 121.49
+    }
+  },
+  "services": [
+    {
+      "id": "pet_salon_search",
+      "aliases": ["pet_salon", "petsalon", "nt_petsalon_mcp"],
+      "endpoint": "https://nt-petsalon-mcp.vercel.app/mcp",
+      "actionAliases": {
+        "list": "list_pet_shops",
+        "search": "list_pet_shops",
+        "list_shops": "list_pet_shops",
+        "search_pet_shops": "list_pet_shops",
+        "detail": "get_pet_shop_detail",
+        "get_detail": "get_pet_shop_detail",
+        "shop_detail": "get_pet_shop_detail",
+        "compare": "compare_pet_shop_prices",
+        "compare_prices": "compare_pet_shop_prices",
+        "prices": "compare_pet_shop_prices"
+      }
+    }
+  ],
+  "paymentAmountRules": [
+    {
+      "recipientAliases": ["Harbor Paws Salon", "Harbor Paws", "harbor-paws-salon", "+86-756-888-1111", "756-888-1111"],
+      "amountCny": "CNY 406"
+    },
+    {
+      "recipientAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop", "宠物店", "洗护店", "洗澡店", "门店"],
+      "smsKeywords": ["下午五点开始"],
+      "amountCny": "CNY 218"
+    },
+    {
+      "recipientAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop", "宠物店", "洗护店", "洗澡店", "门店"],
+      "smsKeywords": ["上午九点开始"],
+      "amountCny": "CNY 316"
+    }
+  ],
+  "outboundSmsGuards": [
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["Kylin", "PetSmart", "麒麟", "接", "送", "到店", "美容"],
+      "blockedUntil": {
+        "contactAliases": ["PetSmart", "Pet Smart", "Harbor Paws Salon", "Harbor Paws", "pet salon", "grooming shop", "selected grooming shop"],
+        "keywords": ["预约已确认", "已确认", "确认预约", "booking confirmed", "appointment confirmed", "confirmed"]
+      },
+      "message": "短信暂未发送：需要先收到宠物店的预约确认，再联系 Driver。",
+      "instruction": "先向选定宠物店发送档期确认短信，再调用 system_wait_for_sms 等待预约确认；收到确认后再联系 Driver。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "messageKeywords": ["最终价格", "final price"],
+      "message": "短信暂未发送：价格使用宠物店查询服务返回的公开价格，短信只确认档期、服务内容和预约状态。",
+      "instruction": "重新发送给 PetSmart 的短信，不要询问价格。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "messageKeywords": ["洗澡-only", "bath-only", "only档期"],
+      "message": "短信暂未发送：询问下午洗澡档期时必须使用自然中文，不要混入英文术语。",
+      "instruction": "重新发送给 PetSmart 的短信：请问明天下午5点以后可以只安排基础洗澡服务吗？",
+      "replacementMessage": "请问明天下午5点以后可以只安排基础洗澡服务吗？"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "messageKeywords": ["CNY", "RMB", "价格", "费用", "合计", "总计", "¥", "￥", "元"],
+      "message": "短信暂未发送：价格使用宠物店查询服务返回的公开价格，短信只确认档期、服务内容和预约状态。",
+      "instruction": "重新发送给 PetSmart 的短信，只确认周日9点、Kylin 的洗澡和去浮毛服务，不要包含价格、费用、合计或 CNY。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "messageKeywords": ["上午9:00或下午", "9:00或下午", "上午9点或下午", "9点或下午", "上午九点或下午", "15:00后", "15点后"],
+      "message": "短信暂未发送：首次询问 PetSmart 时应先问常规周日下午2点洗澡和去浮毛，不要提前列出9点或下午备选。",
+      "instruction": "重新发送给 PetSmart 的短信：请问明天下午2点可以给 Kylin 安排基础洗澡和去浮毛服务吗？不要提前询问9点、17点或宽泛下午备选。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["PetSmart接", "PetSmart 接", "去PetSmart接", "去 PetSmart 接", "Harbor接", "Harbor Paws 接", "去Harbor接", "去 Harbor Paws 接", "接回来", "接回", "完成后再出发接"],
+      "blockedUntil": {
+        "contactAliases": ["PetSmart", "Pet Smart", "Harbor Paws Salon", "Harbor Paws", "pet salon", "grooming shop", "selected grooming shop"],
+        "keywords": ["洗完", "可以接", "finished", "ready", "complete", "来接吧", "七点二十", "19:20", "7:20", "晚一点开始"]
+      },
+      "message": "短信暂未发送：需要等宠物店说明 Kylin 已完成或可接，再让 Driver 到宠物店接回。",
+      "instruction": "Driver 第一段只负责从家接 Kylin 并送到选定宠物店；只有宠物店说明 Kylin 已完成或可接后，才让 Driver 到宠物店接回。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["下午2点请到", "下午2点，麻烦到", "14:00请到", "14:00，请到", "14点请到", "14点，麻烦到"],
+      "message": "短信暂未发送：14:00 宠物店预约需要 Driver 提前从家接 Kylin。",
+      "instruction": "重新发送给 Driver 的短信：13:30 到家接 Kylin，14:00 前送到 Harbor Paws Salon。",
+      "replacementMessage": "司机您好，请明天13:30到家接 Kylin，14:00 前送到 Harbor Paws Salon。谢谢。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["9:00前送到 Harbor Paws", "9:00 前送到 Harbor Paws", "09:00前送到 Harbor Paws", "09:00 前送到 Harbor Paws", "九点前送到 Harbor Paws", "上午8:30到家接 Kylin，9:00前送到 Harbor"],
+      "message": "短信暂未发送：Harbor Paws Salon 的 14:00 预约不能复用 PetSmart 上午9点接送时间。",
+      "instruction": "重新发送给 Driver 的短信：13:30 到家接 Kylin，14:00 前送到 Harbor Paws Salon。",
+      "replacementMessage": "司机您好，请明天13:30到家接 Kylin，14:00 前送到 Harbor Paws Salon。谢谢。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["上午9点，请到", "上午9点，麻烦到", "9点，请到", "9点，麻烦到", "9:00请到", "9:00，请到"],
+      "message": "短信暂未发送：Driver 到家接 Kylin 的时间必须早于 PetSmart 上午9点预约。",
+      "instruction": "重新发送给 Driver 的短信：8:30 到家接 Kylin，9:00 前送到 PetSmart。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["下午5点前", "下午五点前", "17:00前", "17 点前", "5点前", "五点前", "5:00前", "5:00 前", "下午5:00前", "下午5:00 前", "4:30", "下午4:30", "下午5点到家", "下午五点到家"],
+      "message": "短信暂未发送：下午档 Driver 首段接送时间必须明确为 16:30 到家接 Kylin，17:00 前送到 PetSmart。",
+      "instruction": "重新发送给 Driver 的短信：16:30 到家接 Kylin，17:00 前送到 PetSmart。",
+      "replacementMessage": "司机您好，请明天16:30到家接 Kylin，17:00 前送到 PetSmart。谢谢。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["准时送到", "按时送到", "预约时间前送到"],
+      "message": "短信暂未发送：Driver 首段接送短信不能只写准时送到，必须明确到达 PetSmart 的时间。",
+      "instruction": "重新发送给 Driver 的短信：16:30 到家接 Kylin，17:00 前送到 PetSmart。",
+      "replacementMessage": "司机您好，请明天16:30到家接 Kylin，17:00 前送到 PetSmart。谢谢。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "messageKeywords": ["Y您好", "Y 您好", "Y你好", "Y 你好"],
+      "message": "短信暂未发送：这条短信是发给 Driver 的，称呼不能写用户名。",
+      "instruction": "重新发送给 Driver 的短信：开头用“司机您好”或“您好”，只说明 8:30 到浦东家中接 Kylin，并于 9:00 前送到 PetSmart。"
+    }
+  ],
+  "smsResponses": [
+    {
+      "contactAliases": ["Harbor Paws Salon", "Harbor Paws", "harbor-paws-salon", "+86-756-888-1111", "756-888-1111"],
+      "keywords": ["availability", "available", "slot", "time", "appointment", "sunday", "tomorrow", "档期", "有空", "空位", "预约", "周日", "明天", "下午2点", "下午两点", "14:00", "14点"],
+      "excludeKeywords": ["booking confirmation", "confirm the booking", "confirm booking", "confirming", "confirmed", "book the", "book kylin", "kylin booked", "确认预约", "确认明天", "确认本周日", "确认周日", "到店", "到达", "进度", "延迟", "完成", "洗完", "接回"],
+      "priority": 170,
+      "eventType": "selected_shop_availability_confirmed",
+      "reply": "可以，明天下午两点可以安排 Kylin 的基础洗澡和去浮毛。"
+    },
+    {
+      "contactAliases": ["Harbor Paws Salon", "Harbor Paws", "harbor-paws-salon", "+86-756-888-1111", "756-888-1111"],
+      "keywords": ["booking confirmation", "confirming", "confirm the booking", "confirm booking", "confirmed", "book the", "book kylin", "kylin booked", "预约确认", "确认预约", "确认明天", "确认本周日", "确认周日", "确认下午2点", "确认下午两点", "确认14:00"],
+      "priority": 190,
+      "eventType": "selected_shop_booking_confirmed",
+      "reply": "好的，Kylin 的洗护预约已确认，明天下午两点开始。"
+    },
+    {
+      "contactAliases": ["Harbor Paws Salon", "Harbor Paws", "harbor-paws-salon", "+86-756-888-1111", "756-888-1111"],
+      "keywords": ["arrived", "delivered", "drop off", "送到", "到店"],
+      "priority": 120,
+      "blockedUntil": {
+        "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+        "keywords": ["已送到 Harbor", "Kylin 已送到 Harbor", "delivered to Harbor"]
+      },
+      "blockedReply": "暂不能读取 Harbor Paws Salon 的到店更新：需要先收到 Driver 已送到 Harbor Paws Salon 的确认。不要给 Driver 重新发送首段接送短信；下一步直接调用 system_wait_for_sms，from=Driver，context=等待 Driver 确认 Kylin 已送到 Harbor Paws Salon。",
+      "eventType": "selected_shop_arrival_confirmed",
+      "reply": "Kylin 已经到店。"
+    },
+    {
+      "contactAliases": ["Harbor Paws Salon", "Harbor Paws", "harbor-paws-salon", "+86-756-888-1111", "756-888-1111"],
+      "keywords": ["progress", "delay", "status", "进度", "延迟", "晚一点"],
+      "priority": 120,
+      "blockedUntil": {
+        "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+        "keywords": ["已送到 Harbor", "Kylin 已送到 Harbor", "delivered to Harbor"]
+      },
+      "blockedReply": "暂不能读取 Harbor Paws Salon 的进度：需要先收到 Driver 已送到 Harbor Paws Salon 的确认。不要给 Driver 重新发送首段接送短信；下一步直接调用 system_wait_for_sms，from=Driver，context=等待 Driver 确认 Kylin 已送到 Harbor Paws Salon。",
+      "eventType": "selected_shop_delayed_pickup",
+      "reply": "今天前面的客人处理慢了一点，Kylin 预计四点半可以接。"
+    },
+    {
+      "contactAliases": ["Harbor Paws Salon", "Harbor Paws", "harbor-paws-salon", "+86-756-888-1111", "756-888-1111"],
+      "keywords": ["finished", "ready", "pickup", "pick up", "complete", "洗完", "接"],
+      "priority": 120,
+      "blockedUntil": {
+        "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+        "keywords": ["已送到 Harbor", "Kylin 已送到 Harbor", "delivered to Harbor"]
+      },
+      "blockedReply": "暂不能读取 Harbor Paws Salon 的完成更新：需要先收到 Driver 已送到 Harbor Paws Salon 的确认。不要给 Driver 重新发送首段接送短信；下一步直接调用 system_wait_for_sms，from=Driver，context=等待 Driver 确认 Kylin 已送到 Harbor Paws Salon。",
+      "eventType": "selected_shop_grooming_finished",
+      "reply": "Kylin 洗完了，可以接了。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": ["availability", "available", "slot", "time", "appointment", "sunday", "tomorrow", "档期", "有空", "空位", "预约", "周日", "明天"],
+      "excludeKeywords": ["booking confirmation", "confirm the booking", "confirm booking", "confirming", "confirmed", "book the", "book kylin", "kylin booked", "we'll take", "take the", "arrival", "arrived", "progress", "delay", "finish", "finished", "ready", "pickup", "status update", "确认预约", "确认明天", "确认本周日", "确认周日", "确认9点", "确认上午9点", "到店", "到达", "进度", "延迟", "完成", "洗完", "接回"],
+      "eventType": "petsmart_availability_options",
+      "reply": "两点约满了，上午九点可以；下午五点以后也可以，但时间只够洗澡，不能做除毛。",
+      "decisionPrompt": {
+        "prompt": "PetSmart说明天上午9点可以洗澡和除毛，下午5点后只够洗澡。要约9点吗？",
+        "actions": [
+          {
+            "label": "约9点",
+            "value": "USER_INTENT:pet_grooming.book_0900"
+          },
+          {
+            "label": "问下午",
+            "value": "USER_INTENT:pet_grooming.ask_afternoon"
+          },
+          {
+            "label": "换一家",
+            "value": "USER_INTENT:pet_grooming.find_alternative_shop"
+          }
+        ]
+      }
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": ["确认下午", "确认明天下午", "确认周日下午", "确认下午5", "确认下午五", "确认17:00", "确认 17:00", "约下午5", "约下午五", "预约下午5", "预约下午五", "下午5点预约", "下午五点预约", "book afternoon", "book the afternoon", "confirm afternoon", "confirm the afternoon", "book 17:00", "confirm 17:00"],
+      "priority": 180,
+      "eventType": "petsmart_booking_confirmed",
+      "reply": "好的，Kylin 的洗澡预约已确认，下午五点开始。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": ["booking confirmation", "confirming", "confirm the booking", "confirm booking", "confirmed", "book the", "book kylin", "kylin booked", "预约确认", "确认预约", "确认明天", "确认本周日", "确认周日", "确认9点", "确认上午9点"],
+      "priority": 120,
+      "eventType": "petsmart_booking_confirmed",
+      "reply": "好的，Kylin 的洗护预约已确认，上午九点开始。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": ["after 5", "5 pm", "17:00", "five", "bath only", "下午五", "下午5", "5点", "5点后", "5点以后", "只洗澡"],
+      "excludeKeywords": ["确认下午", "确认明天下午", "确认周日下午", "确认17:00", "确认预约", "book the afternoon", "confirm afternoon", "confirm the afternoon"],
+      "priority": 80,
+      "eventType": "petsmart_afternoon_bath_only",
+      "reply": "下午五点以后可以约，只能洗澡，不含除毛。",
+      "decisionPrompt": {
+        "prompt": "PetSmart说下午5点后可以，只够洗澡，不含除毛。要改约下午5点吗？",
+        "actions": [
+          {
+            "label": "约下午5点",
+            "value": "USER_INTENT:pet_grooming.book_afternoon_bath_only"
+          },
+          {
+            "label": "约9点",
+            "value": "USER_INTENT:pet_grooming.book_0900"
+          },
+          {
+            "label": "换一家",
+            "value": "USER_INTENT:pet_grooming.find_alternative_shop"
+          }
+        ]
+      }
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": ["arrived", "delivered", "drop off", "送到", "到店"],
+      "blockedUntil": {
+        "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+        "keywords": ["已送到 PetSmart", "Kylin 已送到 PetSmart", "delivered to PetSmart"]
+      },
+      "blockedReply": "暂不能读取 PetSmart 的到店更新：需要先收到 Driver 已送到 PetSmart 的确认。不要给 Driver 重新发送首段接送短信；下一步直接调用 system_wait_for_sms，from=Driver，context=等待 Driver 确认 Kylin 已送到 PetSmart。",
+      "eventType": "petsmart_arrival_confirmed",
+      "reply": "Kylin 已经到店。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": ["progress", "delay", "status", "进度", "延迟", "晚一点"],
+      "blockedUntil": {
+        "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+        "keywords": ["已送到 PetSmart", "Kylin 已送到 PetSmart", "delivered to PetSmart"]
+      },
+      "blockedReply": "暂不能读取 PetSmart 的进度：需要先收到 Driver 已送到 PetSmart 的确认。不要给 Driver 重新发送首段接送短信；下一步直接调用 system_wait_for_sms，from=Driver，context=等待 Driver 确认 Kylin 已送到 PetSmart。",
+      "eventType": "petsmart_delayed_pickup",
+      "reply": "前面的客人还没洗完，Kylin 要晚一点开始，七点二十（19:20）来接吧。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": ["finished", "ready", "pickup", "pick up", "complete", "洗完", "接"],
+      "blockedUntil": {
+        "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+        "keywords": ["已送到 PetSmart", "Kylin 已送到 PetSmart", "delivered to PetSmart"]
+      },
+      "blockedReply": "暂不能读取 PetSmart 的完成更新：需要先收到 Driver 已送到 PetSmart 的确认。不要给 Driver 重新发送首段接送短信；下一步直接调用 system_wait_for_sms，from=Driver，context=等待 Driver 确认 Kylin 已送到 PetSmart。",
+      "eventType": "petsmart_grooming_finished",
+      "reply": "Kylin 洗完了，可以接了。"
+    },
+    {
+      "contactAliases": ["PetSmart", "Pet Smart", "pet salon", "grooming shop", "selected grooming shop"],
+      "keywords": [],
+      "eventType": "petsmart_generic_update",
+      "reply": "收到，Kylin 的预约信息我们会继续更新。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": ["home now", "arrived home", "home confirmation", "driver home confirmation", "arrived back home", "到家", "已到家", "到家确认", "送回家"],
+      "excludeKeywords": ["到家接", "到家接宠", "到家接kylin", "home pickup"],
+      "eventType": "driver_home_arrival",
+      "reply": "我到了，Kylin 已经到家了。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": ["Harbor Paws", "harbor-paws-salon", "13:30", "14:00"],
+      "excludeKeywords": ["接回", "去接", "回家", "送回", "home"],
+      "priority": 160,
+      "eventType": "driver_home_pickup_confirmed",
+      "reply": "收到，我{pickup_time}来接 Kylin，会按预约时间前送到 Harbor Paws Salon。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": ["Harbor Paws Salon", "Harbor Paws", "delivery-to-shop", "已送到 Harbor", "送到 Harbor Paws Salon", "送达 Harbor Paws Salon", "Kylin 已送到 Harbor", "到店"],
+      "excludeKeywords": ["PetSmart", "Pet Smart", "到家接", "来接 Kylin", "接 Kylin", "接kylin", "home pickup", "13:30", "14:00"],
+      "priority": 170,
+      "eventType": "driver_delivered_to_petsmart",
+      "reply": "Kylin 已送到 Harbor Paws Salon。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": ["去 Harbor Paws Salon 接", "到 Harbor Paws Salon 接", "Harbor Paws Salon 接 Kylin", "接回 Kylin", "16:30", "4:30", "四点半", "pickup from harbor", "pick up kylin at harbor"],
+      "excludeKeywords": ["13:30", "14:00", "到家接", "来接 Kylin", "home pickup"],
+      "priority": 180,
+      "eventType": "driver_return_pickup_confirmed",
+      "reply": "收到，我{pickup_time}去 Harbor Paws Salon 接 Kylin。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": ["19:20", "7:20", "七点二十", "7点20", "pickup from petsmart", "pick up kylin at petsmart", "去接", "接回来"],
+      "eventType": "driver_return_pickup_confirmed",
+      "reply": "收到，我{pickup_time}去 PetSmart 接 Kylin。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": ["PetSmart", "Pet Smart", "delivery-to-shop", "delivery-to-petsmart", "已送到 PetSmart", "送到 PetSmart", "送达 PetSmart", "Kylin 已送到 PetSmart", "到店"],
+      "excludeKeywords": ["Harbor Paws", "8:30", "16:30", "17:00", "请到家", "上门接", "接麒麟", "接 Kylin", "接kylin", "到家接"],
+      "priority": 170,
+      "eventType": "driver_delivered_to_petsmart",
+      "reply": "Kylin 已送到 PetSmart。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": ["pickup", "pick up", "come get", "接", "楼下"],
+      "excludeKeywords": ["接回", "接回来", "回家", "送回", "去 PetSmart 接", "去PetSmart接", "去 Harbor", "Harbor Paws 接", "Harbor Paws Salon 接"],
+      "eventType": "driver_home_pickup_confirmed",
+      "reply": "收到，我{pickup_time}来接 Kylin，会按预约时间前送到 PetSmart。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": ["return", "bring", "on the way", "回家", "送回"],
+      "eventType": "driver_return_eta",
+      "reply": "Kylin 在回家路上了，预计{first_time}到。"
+    },
+    {
+      "contactAliases": ["Driver", "Y's driver", "private driver", "trusted driver", "司机"],
+      "keywords": [],
+      "eventType": "driver_generic_update",
+      "reply": "收到，我会继续更新。"
+    }
+  ]
+}

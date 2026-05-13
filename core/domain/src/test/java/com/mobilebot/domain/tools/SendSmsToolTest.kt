@@ -28,7 +28,7 @@ import org.junit.Test
 class SendSmsToolTest {
     @Test
     fun directSendUsesNonDeliveryConfirmedMessage() = runBlocking {
-        val bridge = FakeBridge(FakeTelephonyBridge(SmsSendResult(success = true, sentDirectly = true)))
+        val bridge = TestDeviceBridge(StubTelephonyBridge(SmsSendResult(success = true, sentDirectly = true)))
         val tool = SendSmsTool(bridge)
 
         val result = tool.execute("""{"phoneNumber":"13800138000","message":"测试"}""")
@@ -42,7 +42,7 @@ class SendSmsToolTest {
 
     @Test
     fun composerFallbackReportsComposerOpened() = runBlocking {
-        val bridge = FakeBridge(FakeTelephonyBridge(SmsSendResult(success = true, sentDirectly = false)))
+        val bridge = TestDeviceBridge(StubTelephonyBridge(SmsSendResult(success = true, sentDirectly = false)))
         val tool = SendSmsTool(bridge)
 
         val result = tool.execute("""{"phoneNumber":"13800138000","message":"测试"}""")
@@ -56,7 +56,7 @@ class SendSmsToolTest {
 
     @Test
     fun missingMessageIsRejected() = runBlocking {
-        val bridge = FakeBridge(FakeTelephonyBridge(SmsSendResult(success = true, sentDirectly = true)))
+        val bridge = TestDeviceBridge(StubTelephonyBridge(SmsSendResult(success = true, sentDirectly = true)))
         val tool = SendSmsTool(bridge)
 
         val result = tool.execute("""{"phoneNumber":"13800138000","message":""}""")
@@ -65,7 +65,7 @@ class SendSmsToolTest {
     }
 }
 
-private class FakeTelephonyBridge(
+private class StubTelephonyBridge(
     private val response: SmsSendResult,
 ) : TelephonyBridge {
     override fun dialNumber(phoneNumber: String): Boolean = true
@@ -81,7 +81,7 @@ private class FakeTelephonyBridge(
     ): SmsSendResult = response
 }
 
-private class FakeBridge(
+private class TestDeviceBridge(
     override val telephony: TelephonyBridge,
 ) : DeviceCapabilityBridge {
     override val files: FileBridge

@@ -4,10 +4,8 @@ import android.util.Log
 import com.mobilebot.domain.LlmConfigurator
 import com.mobilebot.domain.SkillsLoader
 import com.mobilebot.domain.interaction.ActionOption
-import com.mobilebot.domain.memory.MemoryDigestBuilder
-import com.mobilebot.domain.memory.MemoryType
-import com.mobilebot.domain.memory.WorkspaceContextManager
-import com.mobilebot.domain.memory.PersistentMemoryManager
+import com.mobilebot.domain.interaction.ActionPromptCodec
+import com.mobilebot.domain.memory.MemoryFacade
 import com.mobilebot.domain.permissions.AgentCapability
 import com.mobilebot.domain.permissions.AgentCapabilityStore
 import com.mobilebot.domain.permissions.AgentPermissionCoordinator
@@ -21,11 +19,13 @@ import com.mobilebot.domain.skill.SkillSnapshot
 import com.mobilebot.domain.todo.TodoListCodec
 import com.mobilebot.domain.todo.TodoStatus
 import com.mobilebot.domain.tools.CreatePlanTool
+import com.mobilebot.domain.tools.SkillTool
 import com.mobilebot.domain.tools.ToolPermissionGate
 import com.mobilebot.domain.tools.ToolRegistry
 import com.mobilebot.model.ChatMessage
 import com.mobilebot.model.ChatRole
 import com.mobilebot.model.OutboundMessage
+import com.mobilebot.model.ToolDefinition
 import com.mobilebot.network.LlmClient
 import com.mobilebot.network.LlmMessage
 import com.mobilebot.network.LlmToolCall
@@ -52,7 +52,7 @@ class ToolCallAgentLoop @Inject constructor(
     private val toolGate: ToolPermissionGate,
     private val sessions: SessionRepository,
     private val memoryFiles: MemoryFileRepository,
-    private val persistentMemory: PersistentMemoryManager,
+    private val memory: MemoryFacade,
     private val skillsLoader: SkillsLoader,
     private val permissionCoordinator: AgentPermissionCoordinator,
     private val capabilityStore: AgentCapabilityStore,
@@ -61,7 +61,6 @@ class ToolCallAgentLoop @Inject constructor(
     private val llmConfigurator: LlmConfigurator,
     private val sessionKeyProvider: CurrentSessionKeyProvider,
     private val planManager: PlanManager,
-    private val workspaceContext: WorkspaceContextManager,
 ) {
 
     @Volatile
@@ -90,29 +89,26 @@ class ToolCallAgentLoop @Inject constructor(
 
         val snapshot = ensureSkillSnapshot()
         val memoryDigest = buildMemoryDigest(sessionKey)
-        val persistentMemories = buildPersistentMemoryDigest(text)
         val activePrompt = skillsLoader.activePrompt()
 
         val systemPrompt = SystemPromptBuilder.build(
             skillRegistry = skillRegistry,
             memoryDigest = memoryDigest,
             activePrompt = activePrompt,
-            persistentMemories = persistentMemories,
         )
 
-        val toolDefs = toolRegistry.definitionsForLlm()
+        val toolDefs = toolDefinitionsForHistory(history)
 
         val messages = mutableListOf<LlmMessage>()
         messages.add(LlmMessage(role = "system", content = systemPrompt))
 
         for (msg in history.takeLast(MAX_HISTORY)) {
-            messages.add(msg.toLlmMessage())
+            msg.toLlmMessageOrNull()?.let { messages.add(it) }
         }
         if (messages.none { it.role == "user" && it.content == text }) {
             messages.add(LlmMessage(role = "user", content = text))
         }
 
-        workspaceContext.onNewUserRequest(text)
         runAgentLoop(chatId, sessionKey, messages, toolDefs, emit)
     }
 
@@ -120,9 +116,10 @@ class ToolCallAgentLoop @Inject constructor(
         chatId: String,
         sessionKey: String,
         messages: MutableList<LlmMessage>,
-        toolDefs: List<com.mobilebot.model.ToolDefinition>,
+        initialToolDefs: List<ToolDefinition>,
         emit: suspend (RuntimeEvent) -> Unit,
     ) {
+        var toolDefs = initialToolDefs
         var turnsRemaining = MAX_TURNS
         while (turnsRemaining-- > 0) {
             val response = llm.chat(
@@ -137,20 +134,13 @@ class ToolCallAgentLoop @Inject constructor(
                     ?: "I'm not sure how to help with that."
                 sessions.appendAssistantMessage(sessionKey, reply)
                 memoryFiles.appendHistoryLine("assistant: $reply")
-                workspaceContext.onAgentResponse(reply)
 
                 // --- C. Plan step tracking on text response ---
                 if (planManager.isExecuting(chatId)) {
                     val stepId = planManager.currentStepId(chatId)
                     if (stepId != null) {
-                        val stepText = planManager.currentSnapshot(chatId)
-                            ?.items?.firstOrNull { it.id == stepId }?.text ?: stepId
                         planManager.updateStepStatus(chatId, stepId, TodoStatus.COMPLETED)
                         planManager.advanceToNextStep(chatId)
-                        workspaceContext.onPlanStepCompleted(
-                            planSnapshot = planManager.currentSnapshot(chatId),
-                            stepText = stepText,
-                        )
                         emitPlanProgress(chatId, stepId, emit)
                     }
                 }
@@ -160,17 +150,20 @@ class ToolCallAgentLoop @Inject constructor(
                 return
             }
 
-            val assistantMsg = LlmMessage(
+            messages.add(LlmMessage(
                 role = "assistant",
                 content = response.content.orEmpty(),
                 toolCalls = response.toolCalls,
-            )
-            messages.add(assistantMsg)
+            ))
+            val assistantUpdate = response.content?.trim().orEmpty()
             sessions.appendAssistantMessage(
                 sessionKey = sessionKey,
-                content = assistantMsg.content,
-                toolCalls = assistantMsg.toolCalls?.let { serializeToolCalls(it) }
+                content = assistantUpdate,
+                toolCalls = encodeToolCalls(response.toolCalls),
             )
+            if (assistantUpdate.isNotBlank()) {
+                emit(RuntimeEvent.AssistantUpdate(assistantUpdate))
+            }
 
             for (tc in response.toolCalls) {
                 emit(RuntimeEvent.ToolStarted(tc.name, tc.id))
@@ -232,16 +225,26 @@ class ToolCallAgentLoop @Inject constructor(
 
                 messages.add(LlmMessage(role = "tool", content = body, toolCallId = tc.id, name = tc.name))
                 sessions.appendToolMessage(sessionKey, body, tc.id, tc.name)
-                emit(RuntimeEvent.ToolFinished(tc.name, tc.id, success = result.ok, summary = body.take(200)))
+                emit(RuntimeEvent.ToolFinished(tc.name, tc.id, success = result.ok, summary = body.take(200), detail = body))
 
                 Log.d(TAG, "Tool ${tc.name} -> ${if (result.ok) "OK" else "FAIL"}: ${body.take(200)}")
-                workspaceContext.onToolResult(tc.name, result.message)
 
-                // --- B. Post-tool-call check: break on create_plan ---
+                if (tc.name == SkillTool.NAME && result.ok) {
+                    val allowedTools = decodeAllowedToolsFromSkillResult(result.dataJson)
+                    if (allowedTools.isNotEmpty()) {
+                        toolDefs = toolRegistry.definitionsForSkill(allowedTools)
+                    }
+                }
+
+                decisionPromptFromToolData(result.dataJson)?.let { prompt ->
+                    emitActionPrompt(sessionKey, prompt, emit)
+                    return
+                }
+
+                // --- B. Post-tool-call check: expose create_plan without blocking execution ---
                 if (tc.name == CreatePlanTool.NAME && result.ok) {
                     val plan = planManager.getPending(chatId)
                     if (plan != null) {
-                        // Save message history for seamless re-entry after approval
                         planManager.storePlan(
                             chatId = chatId,
                             title = plan.snapshot.title,
@@ -250,8 +253,8 @@ class ToolCallAgentLoop @Inject constructor(
                             },
                             messages = messages,
                         )
-                        emitPlanForReview(chatId, plan, emit)
-                        return
+                        planManager.approve(chatId)
+                        emitPlanForExecution(chatId, sessionKey, emit)
                     }
                 }
             }
@@ -262,7 +265,6 @@ class ToolCallAgentLoop @Inject constructor(
         val fallback = "Stopped: too many tool call rounds. Please try a simpler request."
         sessions.appendAssistantMessage(sessionKey, fallback)
         memoryFiles.appendHistoryLine("assistant: $fallback")
-        workspaceContext.onAgentResponse(fallback)
         emit(RuntimeEvent.StateChanged("FAILED"))
         emit(RuntimeEvent.AssistantMessage(fallback))
     }
@@ -290,11 +292,7 @@ class ToolCallAgentLoop @Inject constructor(
 
                 emit(RuntimeEvent.StateChanged("THINKING"))
 
-                val toolDefs = toolRegistry.definitionsForLlm()
-                workspaceContext.resetContext(
-                    "Executing plan: ${pending.snapshot.title}. " +
-                        pending.snapshot.items.joinToString(" | ") { it.text }
-                )
+                val toolDefs = toolDefinitionsForHistory(sessions.getMessages(sessionKey))
                 runAgentLoop(chatId, sessionKey, restored, toolDefs, emit)
             }
             "edit_plan" -> {
@@ -316,33 +314,50 @@ class ToolCallAgentLoop @Inject constructor(
                 planManager.reject(chatId)
                 sessions.appendUserMessage(sessionKey, text)
                 memoryFiles.appendHistoryLine("user: $text")
-                workspaceContext.onNewUserRequest(text)
 
                 emit(RuntimeEvent.StateChanged("THINKING"))
 
                 val history = sessions.getMessages(sessionKey)
                 val memoryDigest = buildMemoryDigest(sessionKey)
-                val persistentMemories = buildPersistentMemoryDigest(text)
                 val activePrompt = skillsLoader.activePrompt()
                 val systemPrompt = SystemPromptBuilder.build(
                     skillRegistry = skillRegistry,
                     memoryDigest = memoryDigest,
                     activePrompt = activePrompt,
-                    persistentMemories = persistentMemories,
                 )
-                val toolDefs = toolRegistry.definitionsForLlm()
+                val toolDefs = toolDefinitionsForHistory(history)
                 val messages = mutableListOf<LlmMessage>()
                 messages.add(LlmMessage(role = "system", content = systemPrompt))
                 for (msg in history.takeLast(MAX_HISTORY)) {
-                    messages.add(msg.toLlmMessage())
+                    msg.toLlmMessageOrNull()?.let { messages.add(it) }
                 }
                 runAgentLoop(chatId, sessionKey, messages, toolDefs, emit)
             }
         }
     }
 
+    private suspend fun emitPlanForExecution(
+        chatId: String,
+        sessionKey: String,
+        emit: suspend (RuntimeEvent) -> Unit,
+    ) {
+        val snapshot = planManager.currentSnapshot(chatId) ?: return
+        val todoJson = TodoListCodec.toJson(snapshot)
+        sessions.appendAssistantMessage(
+            sessionKey = sessionKey,
+            content = todoJson,
+            toolName = TodoListCodec.MESSAGE_TOOL_NAME,
+            toolCalls = todoJson,
+        )
+        val runningStepId = snapshot.items.firstOrNull { it.status == TodoStatus.RUNNING }?.id
+            ?: snapshot.items.firstOrNull()?.id
+            ?: ""
+        emit(RuntimeEvent.PlanStepUpdated(snapshot, runningStepId, TodoStatus.RUNNING))
+    }
+
     private suspend fun emitPlanForReview(
         chatId: String,
+        sessionKey: String,
         pending: PendingPlan,
         emit: suspend (RuntimeEvent) -> Unit,
     ) {
@@ -362,7 +377,45 @@ class ToolCallAgentLoop @Inject constructor(
                 ActionOption("Cancel", "reject_plan"),
             )
         }
+        val promptText = buildPlanReviewPrompt(pending)
+        sessions.appendAssistantMessage(
+            sessionKey = sessionKey,
+            content = TodoListCodec.toJson(pending.snapshot),
+            toolName = TodoListCodec.MESSAGE_TOOL_NAME,
+            toolCalls = TodoListCodec.toJson(pending.snapshot),
+        )
+        sessions.appendAssistantMessage(
+            sessionKey = sessionKey,
+            content = promptText,
+            toolName = ActionPromptCodec.MESSAGE_TOOL_NAME,
+            toolCalls = ActionPromptCodec.toJson(actions),
+        )
         emit(RuntimeEvent.PlanPending(pending.snapshot, actions))
+    }
+
+    private suspend fun emitActionPrompt(
+        sessionKey: String,
+        prompt: ToolDecisionPrompt,
+        emit: suspend (RuntimeEvent) -> Unit,
+    ) {
+        val actions = prompt.actions.ifEmpty {
+            ActionPromptCodec.resolveOptions(prompt.promptText)
+        }
+        sessions.appendAssistantMessage(
+            sessionKey = sessionKey,
+            content = prompt.promptText,
+            toolName = ActionPromptCodec.MESSAGE_TOOL_NAME,
+            toolCalls = ActionPromptCodec.toJson(actions),
+        )
+        emit(RuntimeEvent.ActionPromptRequired(prompt.promptText, actions))
+    }
+
+    private fun buildPlanReviewPrompt(pending: PendingPlan): String {
+        val title = pending.snapshot.title.trim().ifBlank { "Plan" }
+        val hasChinese = title.any {
+            Character.UnicodeScript.of(it.code) == Character.UnicodeScript.HAN
+        }
+        return if (hasChinese) "请确认是否执行计划：$title" else "Review this plan: $title"
     }
 
     private suspend fun emitPlanProgress(
@@ -381,6 +434,24 @@ class ToolCallAgentLoop @Inject constructor(
         return snap
     }
 
+    private fun toolDefinitionsForHistory(history: List<ChatMessage>): List<ToolDefinition> {
+        val allowedTools = activeSkillAllowedTools(history)
+        return if (allowedTools.isNotEmpty()) {
+            toolRegistry.definitionsForSkill(allowedTools)
+        } else {
+            toolRegistry.definitionsForLlm()
+        }
+    }
+
+    private fun activeSkillAllowedTools(history: List<ChatMessage>): Set<String> =
+        history.asReversed().firstNotNullOfOrNull { msg ->
+            if (msg.role == ChatRole.Tool && msg.toolName == SkillTool.NAME) {
+                decodeAllowedToolsFromSkillToolMessage(msg.content).takeIf { it.isNotEmpty() }
+            } else {
+                null
+            }
+        }.orEmpty()
+
     fun invalidateSkillSnapshot() {
         skillSnapshot = null
         skillRegistry.invalidateSnapshot()
@@ -388,40 +459,16 @@ class ToolCallAgentLoop @Inject constructor(
 
     private suspend fun buildMemoryDigest(sessionKey: String): String =
         withContext(Dispatchers.IO) {
-            val sb = StringBuilder()
-
             val md = memoryFiles.readMemoryMd().trim().take(2500)
-            if (md.isNotEmpty()) {
-                sb.appendLine("## Workspace context")
-                sb.appendLine(md)
-                sb.appendLine()
-            }
-
-            val history = memoryFiles.readHistoryTail(1500).trim()
-            if (history.isNotEmpty()) {
-                sb.appendLine("## Recent session history")
-                sb.appendLine(history)
-            }
-
-            sb.toString().trimEnd()
-        }
-
-    private suspend fun buildPersistentMemoryDigest(query: String): String =
-        withContext(Dispatchers.IO) {
-            val memories = persistentMemory.recallRelevant(query = query, limit = 5)
-            if (memories.isEmpty()) return@withContext ""
-
+            val sum = memory.getSessionSummary(sessionKey)?.trim()?.take(1500).orEmpty()
             buildString {
-                appendLine("## Persistent memories (recalled)")
-                for (mem in memories) {
-                    val tag = mem.type?.let { "[${MemoryType.toLabel(it)}] " } ?: ""
-                    val age = MemoryDigestBuilder.ageString(mem.mtimeMs)
-                    appendLine()
-                    appendLine("### $tag${mem.filename} ($age)")
-                    if (mem.description != null) {
-                        appendLine("*${mem.description}*")
-                    }
-                    appendLine(mem.content.trim())
+                if (md.isNotEmpty()) {
+                    appendLine("## Long-term memory excerpt")
+                    appendLine(md)
+                }
+                if (sum.isNotEmpty()) {
+                    appendLine("## Session summary")
+                    appendLine(sum)
                 }
             }
         }
@@ -430,8 +477,11 @@ class ToolCallAgentLoop @Inject constructor(
         when (ev) {
             is RuntimeEvent.AssistantMessage ->
                 bus.publishOutbound(OutboundMessage(CHANNEL, chatId, ev.text, emptyMap()))
+            is RuntimeEvent.AssistantUpdate ->
+                bus.publishOutbound(OutboundMessage(CHANNEL, chatId, ev.text,
+                    mapOf("_runtime" to "assistant_update")))
             is RuntimeEvent.ToolFinished ->
-                bus.tryPublishOutbound(OutboundMessage(CHANNEL, chatId, ev.summary,
+                bus.tryPublishOutbound(OutboundMessage(CHANNEL, chatId, ev.detail,
                     mapOf("_runtime" to "tool", "_tool" to ev.toolName, "_ok" to if (ev.success) "1" else "0")))
             is RuntimeEvent.StateChanged ->
                 bus.tryPublishOutbound(OutboundMessage(CHANNEL, chatId, ev.state,
@@ -442,67 +492,134 @@ class ToolCallAgentLoop @Inject constructor(
             is RuntimeEvent.PlanPending -> {
                 val todoJson = TodoListCodec.toJson(ev.plan)
                 bus.publishOutbound(OutboundMessage(CHANNEL, chatId, todoJson,
-                    mapOf("_runtime" to "todo_list")))
+                    mapOf("_runtime" to "todo_list", "_todo_payload" to todoJson)))
                 val actionsJson = com.mobilebot.domain.interaction.ActionPromptCodec.toJson(ev.actions)
-                bus.publishOutbound(OutboundMessage(CHANNEL, chatId, actionsJson,
-                    mapOf("_runtime" to "action_prompt")))
+                val promptText = if (ev.actions.any { it.label.any { ch -> Character.UnicodeScript.of(ch.code) == Character.UnicodeScript.HAN } }) {
+                    "请选择下一步"
+                } else {
+                    "Choose the next step"
+                }
+                bus.publishOutbound(OutboundMessage(CHANNEL, chatId, promptText,
+                    mapOf("_runtime" to "action_prompt", "_actions" to actionsJson)))
+            }
+            is RuntimeEvent.ActionPromptRequired -> {
+                val actionsJson = ActionPromptCodec.toJson(ev.actions)
+                bus.publishOutbound(OutboundMessage(CHANNEL, chatId, ev.promptText,
+                    mapOf("_runtime" to "action_prompt", "_actions" to actionsJson)))
             }
             is RuntimeEvent.PlanStepUpdated -> {
                 val todoJson = TodoListCodec.toJson(ev.plan)
                 bus.tryPublishOutbound(OutboundMessage(CHANNEL, chatId, todoJson,
-                    mapOf("_runtime" to "todo_list")))
+                    mapOf("_runtime" to "todo_list", "_todo_payload" to todoJson)))
             }
             else -> {}
         }
     }
 
-    private fun serializeToolCalls(toolCalls: List<LlmToolCall>): String {
-        val arr = JSONArray()
-        for (tc in toolCalls) {
-            arr.put(JSONObject()
-                .put("id", tc.id)
-                .put("name", tc.name)
-                .put("argumentsJson", tc.argumentsJson))
-        }
-        return arr.toString()
-    }
-
     companion object {
         const val CHANNEL = "mobile"
         private const val TAG = "ToolCallAgentLoop"
-        private const val MAX_TURNS = 15
+        private const val MAX_TURNS = 30
         private const val MAX_TOKENS = 4096
         private const val MAX_HISTORY = 20
 
-        private fun ChatMessage.toLlmMessage(): LlmMessage {
-            val toolCalls = if (!toolCallsJson.isNullOrBlank()) {
-                runCatching {
-                    val arr = JSONArray(toolCallsJson)
-                    val list = mutableListOf<LlmToolCall>()
-                    for (i in 0 until arr.length()) {
-                        val o = arr.getJSONObject(i)
-                        list.add(LlmToolCall(
-                            id = o.getString("id"),
-                            name = o.getString("name"),
-                            argumentsJson = o.getString("argumentsJson")
-                        ))
-                    }
-                    list
-                }.getOrNull()
-            } else null
+        private data class ToolDecisionPrompt(
+            val promptText: String,
+            val actions: List<ActionOption>,
+        )
 
+        private fun decisionPromptFromToolData(dataJson: String?): ToolDecisionPrompt? {
+            if (dataJson.isNullOrBlank()) return null
+            return runCatching {
+                val root = JSONObject(dataJson)
+                val promptObj = root.optJSONObject("decisionPrompt")
+                    ?: root.optJSONObject("userDecision")
+                    ?: return@runCatching null
+                val promptText = promptObj.optString("prompt")
+                    .ifBlank { promptObj.optString("text") }
+                    .trim()
+                if (promptText.isBlank()) return@runCatching null
+                val actions = ActionPromptCodec.parseJson(
+                    promptObj.optJSONArray("actions")?.toString()
+                        ?: promptObj.optJSONArray("options")?.toString(),
+                )
+                ToolDecisionPrompt(promptText, actions)
+            }.getOrNull()
+        }
+
+        private fun ChatMessage.toLlmMessageOrNull(): LlmMessage? {
+            if (role == ChatRole.Assistant &&
+                (toolName == TodoListCodec.MESSAGE_TOOL_NAME || toolName == ActionPromptCodec.MESSAGE_TOOL_NAME)
+            ) {
+                return null
+            }
             return LlmMessage(
-                role = when (role) {
-                    ChatRole.System -> "system"
-                    ChatRole.User -> "user"
-                    ChatRole.Assistant -> "assistant"
-                    ChatRole.Tool -> "tool"
-                },
-                content = content,
-                toolCallId = toolCallId,
-                name = toolName,
-                toolCalls = toolCalls,
-            )
+            role = when (role) {
+                ChatRole.System -> "system"
+                ChatRole.User -> "user"
+                ChatRole.Assistant -> "assistant"
+                ChatRole.Tool -> "tool"
+            },
+            content = content,
+            toolCallId = toolCallId,
+            name = toolName,
+            toolCalls = if (role == ChatRole.Assistant) decodeToolCalls(toolCallsJson) else null,
+        )
+        }
+
+        private fun encodeToolCalls(toolCalls: List<LlmToolCall>): String =
+            JSONArray().apply {
+                toolCalls.forEach { tc ->
+                    put(
+                        JSONObject()
+                            .put("id", tc.id)
+                            .put("name", tc.name)
+                            .put("argumentsJson", tc.argumentsJson),
+                    )
+                }
+            }.toString()
+
+        private fun decodeToolCalls(raw: String?): List<LlmToolCall>? {
+            if (raw.isNullOrBlank()) return null
+            return runCatching {
+                val arr = JSONArray(raw)
+                buildList {
+                    for (i in 0 until arr.length()) {
+                        val o = arr.optJSONObject(i) ?: continue
+                        val id = o.optString("id", "").trim()
+                        val name = o.optString("name", "").trim()
+                        if (id.isEmpty() || name.isEmpty()) continue
+                        val args = o.optString("argumentsJson", "").ifBlank {
+                            o.optString("arguments", "{}")
+                        }
+                        add(LlmToolCall(id = id, name = name, argumentsJson = args.ifBlank { "{}" }))
+                    }
+                }.takeIf { it.isNotEmpty() }
+            }.getOrNull()
+        }
+
+        private fun decodeAllowedToolsFromSkillResult(raw: String?): Set<String> {
+            if (raw.isNullOrBlank()) return emptySet()
+            return runCatching {
+                val obj = JSONObject(raw)
+                val arr = obj.optJSONArray("allowedTools") ?: return@runCatching emptySet()
+                buildSet {
+                    for (i in 0 until arr.length()) {
+                        val name = arr.optString(i, "").trim()
+                        if (name.isNotEmpty()) add(name)
+                    }
+                    if (obj.optBoolean("allowSkillSwitching", false)) add(SkillTool.NAME)
+                }
+            }.getOrElse { emptySet() }
+        }
+
+        private fun decodeAllowedToolsFromSkillToolMessage(content: String): Set<String> {
+            val metadata = content
+                .lineSequence()
+                .map { it.trim() }
+                .lastOrNull { it.startsWith("{") && it.contains("\"allowedTools\"") }
+                ?: return emptySet()
+            return decodeAllowedToolsFromSkillResult(metadata)
         }
     }
 }

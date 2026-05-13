@@ -7,7 +7,7 @@ import com.mobilebot.bridge.WorkspaceFileRead
 import com.mobilebot.domain.agent.CurrentSessionKeyProvider
 import com.mobilebot.domain.testdoubles.AllCapabilitiesProbe
 import com.mobilebot.domain.testdoubles.AlwaysForegroundReader
-import com.mobilebot.domain.testdoubles.FakeDeviceCapabilityBridge
+import com.mobilebot.domain.testdoubles.RecordingDeviceCapabilityBridge
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -16,12 +16,12 @@ import org.junit.Test
 
 class ToolRegistryIntegrationTest {
 
-    private lateinit var bridge: FakeDeviceCapabilityBridge
+    private lateinit var bridge: RecordingDeviceCapabilityBridge
     private lateinit var registry: ToolRegistry
 
     @Before
     fun setUp() {
-        bridge = FakeDeviceCapabilityBridge()
+        bridge = RecordingDeviceCapabilityBridge()
         val probe = AllCapabilitiesProbe()
         val policyEngine = ToolPolicyEngine(probe, AlwaysForegroundReader(), bridge)
         val sessionKeyProvider = CurrentSessionKeyProvider()

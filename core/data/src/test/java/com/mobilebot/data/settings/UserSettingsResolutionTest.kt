@@ -66,6 +66,14 @@ class UserSettingsResolutionTest {
     }
 
     @Test
+    fun `resolvedModel maps old Gemini default to current default`() {
+        assertEquals(
+            LlmEndpointDefaults.DEFAULT_GEMINI_MODEL,
+            UserSettingsResolution.resolvedModel(keyPresent = true, stored = "gemini-2.0-flash"),
+        )
+    }
+
+    @Test
     fun `resolvedModel maps legacy glm-4_7 to glm-4_7-flash`() {
         assertEquals(
             LlmEndpointDefaults.DEFAULT_GLM_MODEL,

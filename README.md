@@ -8,11 +8,49 @@
 
 ## 一页概览
 - 根工程名是 `MobileBot`，是一个 Gradle Kotlin DSL 的 Android 多模块项目。
-- 主界面目前只有两个页面：聊天页和设置页。
-- `feature:chat` 负责 UI，`core:domain` 负责 Agent 规划与工具编排，`core:bridge` 负责 Android 系统能力桥接，`core:data` 负责数据、配置和后台任务，`core:network` 负责模型/网关调用。
+- 当前主界面优先进入 AIOS 场景体验界面，保留聊天与设置能力。
+- `feature:chat` 负责 AIOS 场景 UI、聊天 UI 和设置页，`core:domain` 负责 Agent 规划与工具编排，`core:systemruntime` 负责场景所需的系统运行时能力，`core:bridge` 负责 Android 系统能力桥接，`core:data` 负责数据、配置和后台任务，`core:network` 负责模型/网关调用。
 - 当前主聊天会话固定使用 `chatId = "main"`，对应主会话键 `mobile:main`。
 - 自动化测试目前只有少量 JVM 单元测试，集中在 `core:domain` 和 `core:data`，没有仓库内的 UI 自动化或仪器测试。
 - CI 已配置（GitHub Actions），覆盖编译、单元测试和 Lint。详见 `.github/workflows/ci.yml` 和 `TESTING.md`。
+
+## 当前分支交付范围
+
+本分支补充了 AIOS Agent 场景体验所需的 UI、Agent 闭环和系统运行时能力，目标是让真实 LLM 能按 Skill 指令编排一个可在手机端连续运行的端到端场景。
+
+### AIOS 场景界面
+- 新增全屏场景体验界面，默认进入宠物洗护场景。
+- 页面分为顶部时间区、可展开任务蓝图区、会话区、单行任务进程区和底部交互区。
+- 任务蓝图区默认收起；点击时间区展开，点击蓝图区外收起。展开后默认定位到最新日志，新日志出现时自动滚到底部。
+- 会话区按时间顺序混排 AI 消息、用户选择和候选动作；动作被点击后保留原有位置，并用细线蓝光边框表示处理中。
+- 任务进程区恢复为单行状态条，用于显示当前执行状态和进度。
+- 蓝图区参与方支持动态加入和移除，同时固定显示主 Agent 头像 `NT`，位于第一位。
+- 长提醒会以应用内浮层出现，样式用于表达系统提醒，不依赖系统级弹窗。
+
+### 宠物洗护场景 Skill
+- 新增 `pet-grooming` Skill，入口位于 `core/data/src/main/assets/skills/md/pet-grooming/SKILL.md`。
+- Skill 描述用户偏好、触发条件、参与方、工具链路、用户决策点和时间推进规则。
+- 当前场景覆盖周末触发、确认是否预约、查询宠物店联系方式、通过短信确认档期、协调私人司机、创建长提醒、跨天推进、接送与到家确认、支付记账。
+- 场景流程不是逐字脚本，而是给 LLM 的事件模板和约束；LLM 需要根据用户选择、短信回复和时间事件继续编排。
+
+### 系统运行时能力
+- 新增 `:core:systemruntime` 模块，用于承载场景运行所需的系统能力适配。
+- 已注册面向 LLM 的系统工具，包括短信发送、短信等待、联系人查询、提醒创建、服务调用等。
+- 工具返回结构保持稳定，便于蓝图区和会话区消费，也便于 LLM 继续基于工具结果推进。
+- 支持联系人数据、用户记忆、常用地点和社交关系等资产入口，当前资产位于 `core/systemruntime/src/main/assets/user_memory/`。
+- 宠物店信息通过 MCP 获取联系方式和价格；档期仍通过短信确认，更贴近日常沟通链路。
+
+### Agent 闭环修复
+- 修复 OpenAI `tool_calls` 多轮历史持久化，避免真实 LLM 在连续工具调用时丢失上下文。
+- 修复 plan/action 元数据协议，使 UI 能正确消费计划、动作候选和用户选择。
+- 修复子任务 session key 不一致导致的结果读取问题。
+- 增加场景决策意图归一化，让用户点击候选动作或自由输入时，都能转成稳定的场景意图再交给 Agent。
+- 补充工具调用轮次保护、错误日志和健康检查，避免异常情况下无限循环。
+
+### 验证状态
+- 本分支已通过 `./gradlew.bat assembleDebug`。
+- 已在 Android 真机上多轮安装测试，覆盖启动、展开蓝图区、动作点击、短信编排、长提醒浮层、跨天时间推进和蓝图区自动滚动。
+- 详细测试说明和 CI 入口见 `TESTING.md`。
 
 ## 快速开始
 1. 用 Android Studio 打开仓库根目录，也就是包含 `settings.gradle.kts` 的这一层。
@@ -65,14 +103,15 @@
 | `:core:bus` | Agent 到 UI 的消息总线 | Outbound 消息分发 |
 | `:core:network` | OpenAI-compatible 客户端与模型请求适配 | Provider 兼容、请求体、SSE 解析 |
 | `:core:bridge` | Android 系统能力抽象和实现 | 浏览器、地图、联系人、通知、位置、短信等桥接 |
+| `:core:systemruntime` | 场景运行时系统能力适配 | 短信等待、联系人、提醒、服务调用、用户记忆资产 |
 | `:core:domain` | Agent 循环（tool_calls）、技能注册与执行、工具注册、权限协调 | 业务规则、技能/工具编排 |
 | `:core:data` | Room、设置存储、后台任务、内存文件、技能资产加载 | 持久化、DataStore/Prefs、Worker、实现绑定 |
 
 ### 依赖方向
 - `app` 依赖 `feature:chat`、`core:data`、`core:domain`、`core:bridge`。
-- `feature:chat` 依赖 `core:model`、`core:bus`、`core:domain`、`core:data`、`core:network`。
+- `feature:chat` 依赖 `core:model`、`core:bus`、`core:domain`、`core:data`、`core:network`、`core:systemruntime`。
 - `core:domain` 依赖 `core:model`、`core:bus`、`core:bridge`、`core:network`。
-- `core:data` 依赖 `core:model`、`core:bridge`、`core:domain`、`core:network`。
+- `core:data` 依赖 `core:model`、`core:bridge`、`core:domain`、`core:network`、`core:systemruntime`。
 - `core:model` 和 `core:bridge` 相对底层，适合作为跨团队复用边界。
 
 建议保持这个分层方向，不要把 UI 逻辑压进 `app`，也不要把 Android 具体实现直接塞进 `core:domain`。

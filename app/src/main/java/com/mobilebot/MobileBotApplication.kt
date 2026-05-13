@@ -29,6 +29,7 @@ class MobileBotApplication :
         val loader = entryPoint.skillAssetLoader()
         loader.loadAllSkills()
         loader.loadServiceConfigs()
+        entryPoint.systemRuntime().bootstrap()
         entryPoint.virtualDataBootstrapper().bootstrapIfNeeded()
         processForegroundBinder.attach()
         val ch =

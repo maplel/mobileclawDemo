@@ -23,6 +23,30 @@ data class SkillConditions(
     val deviceState: String? = null,
 )
 
+enum class ScenarioDisplayMode(val value: String) {
+    CHAT("chat"),
+    FULLSCREEN("fullscreen"),
+    WORKBENCH("workbench"),
+    ;
+
+    companion object {
+        fun fromString(value: String?): ScenarioDisplayMode =
+            when (value?.lowercase()?.trim()) {
+                "fullscreen" -> FULLSCREEN
+                "workbench" -> WORKBENCH
+                else -> CHAT
+            }
+    }
+}
+
+data class ScenarioSkillSpec(
+    val scenarioId: String,
+    val displayMode: ScenarioDisplayMode = ScenarioDisplayMode.CHAT,
+    val systemCapabilities: List<String> = emptyList(),
+    val decisionPoints: List<String> = emptyList(),
+    val timelineHints: List<String> = emptyList(),
+)
+
 data class SkillManifest(
     val id: String,
     val name: String,
@@ -45,8 +69,7 @@ data class SkillManifest(
     val composesSkills: List<String> = emptyList(),
     val userConfirmationPoints: List<String> = emptyList(),
     val requiredServices: List<String> = emptyList(),
-    val references: List<String> = emptyList(),
-    val runtimeContext: List<String> = emptyList(),
+    val scenario: ScenarioSkillSpec? = null,
 
     // --- Invocation control ---
     val always: Boolean = false,

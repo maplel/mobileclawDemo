@@ -1,0 +1,7 @@
+{
+  "id": "file.reference_skill",
+  "name": "ReferenceSkill",
+  "description": "When the user asks for a reference skill response, answer briefly and mention this skill.",
+  "triggers": ["reference skill", "reference skill response"],
+  "applicableTools": ["open_url"]
+}
