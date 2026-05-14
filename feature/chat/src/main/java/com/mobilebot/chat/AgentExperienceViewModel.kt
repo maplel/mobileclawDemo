@@ -1736,7 +1736,7 @@ class AgentExperienceViewModel
                     authorization = authorization,
                 )
                 if (guardError == null) {
-                    applyScenarioAgentCommands(result.commands, timeText)
+                    applyScenarioAgentCommands(result.commands.withSystemEventLog(event), timeText)
                     _frame.update { it.copy(busy = false, activeActionValue = null) }
                 } else {
                     recordScenarioAgentDiagnostic("system ${event.id}", guardError)
@@ -1767,6 +1767,77 @@ class AgentExperienceViewModel
                 appendLine("title: $title")
                 appendLine("body: $body")
             }
+
+        private fun List<ScenarioAgentCommand>.withSystemEventLog(event: SystemRuntimeEvent): List<ScenarioAgentCommand> {
+            val eventLog = ScenarioLog(event.toBlueprintLogText())
+            val loggedTaskIds = mutableSetOf<String>()
+            return map { command ->
+                when (command) {
+                    is ScenarioAgentCommand.CreateTask -> {
+                        if (!loggedTaskIds.add(command.seed.taskId)) {
+                            command
+                        } else {
+                            command.copy(seed = command.seed.copy(logs = command.seed.logs.withEventLog(eventLog, event)))
+                        }
+                    }
+                    is ScenarioAgentCommand.UpdateTask -> {
+                        if (!loggedTaskIds.add(command.update.taskId)) {
+                            command
+                        } else {
+                            command.copy(update = command.update.copy(logs = command.update.logs.withEventLog(eventLog, event)))
+                        }
+                    }
+                    else -> command
+                }
+            }
+        }
+
+        private fun List<ScenarioLog>.withEventLog(
+            eventLog: ScenarioLog,
+            event: SystemRuntimeEvent,
+        ): List<ScenarioLog> {
+            val alreadyLogged = any { log ->
+                log.text == eventLog.text || (event.body.isNotBlank() && log.text.contains(event.body))
+            }
+            if (alreadyLogged) return this
+            val remainingLogs = if (firstOrNull()?.isUnattributedEventSummary() == true) drop(1) else this
+            return listOf(eventLog) + remainingLogs
+        }
+
+        private fun ScenarioLog.isUnattributedEventSummary(): Boolean {
+            val value = text.trim()
+            if (value.isBlank()) return false
+            val operationPrefixes = listOf(
+                "收到",
+                "发送",
+                "开始",
+                "创建",
+                "触发",
+                "记录",
+                "支付",
+                "添加",
+                "移除",
+                "完成",
+                "更新",
+                "联系",
+                "监听",
+                "回复",
+                "取消",
+            )
+            return operationPrefixes.none { value.startsWith(it) }
+        }
+
+        private fun SystemRuntimeEvent.toBlueprintLogText(): String {
+            val detail = body.ifBlank { title }
+            val sourceText = source.ifBlank { "系统" }
+            return when (this) {
+                is IncomingSmsEvent -> "收到 $sourceText 短信：$detail"
+                is IncomingCallEvent -> "收到 $sourceText 来电：$detail"
+                is CallEndedEvent -> "$sourceText 通话结束：$detail"
+                is ReminderFiredEvent -> "触发提醒：$detail"
+                else -> "收到 $sourceText 通知：$detail"
+            }
+        }
 
         private suspend fun memoryDigestForScenario(): String =
             withContext(Dispatchers.IO) {
