@@ -27,8 +27,6 @@ import com.mobilebot.scenarios.onehour.OneHourScenarioFlow
 import com.mobilebot.scenarios.onehour.OneHourScenarioRunTracker
 import com.mobilebot.scenarios.runtime.ScenarioAgentCommand
 import com.mobilebot.scenarios.runtime.ScenarioAction
-import com.mobilebot.scenarios.runtime.ScenarioCommandBatch
-import com.mobilebot.scenarios.runtime.ScenarioCommandCodec
 import com.mobilebot.scenarios.runtime.ScenarioConversation
 import com.mobilebot.scenarios.runtime.ScenarioDecision
 import com.mobilebot.scenarios.runtime.ScenarioLog
@@ -1719,9 +1717,7 @@ class AgentExperienceViewModel
                             memoryDigest = memoryDigestForScenario(),
                             skillInstruction = OneHourScenarioPolicy.orchestrationInstruction(
                                 eventId = event.id,
-                                referenceCommandsJson = ScenarioCommandCodec.toJson(
-                                    ScenarioCommandBatch(referenceCommands),
-                                ),
+                                plannerPolicyJson = OneHourScenarioFlow.plannerPolicyJson(event, referenceCommands),
                             ),
                         ),
                     )
@@ -2098,8 +2094,9 @@ class AgentExperienceViewModel
                             memoryDigest = memoryDigestForScenario(),
                             skillInstruction = OneHourScenarioPolicy.userDecisionInstruction(
                                 userText = displayText,
-                                referenceCommandsJson = ScenarioCommandCodec.toJson(
-                                    ScenarioCommandBatch(referenceCommands),
+                                plannerPolicyJson = OneHourScenarioFlow.userDecisionPlannerPolicyJson(
+                                    userText = displayText,
+                                    referenceCommands = referenceCommands,
                                 ),
                             ),
                         ),

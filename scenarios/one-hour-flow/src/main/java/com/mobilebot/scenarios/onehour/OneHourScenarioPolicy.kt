@@ -186,32 +186,35 @@ object OneHourScenarioPolicy {
 
     fun orchestrationInstruction(
         eventId: String,
-        referenceCommandsJson: String,
+        plannerPolicyJson: String,
     ): String =
         """
             当前事件 id：$eventId。
             你需要根据系统事件事实、当前任务状态、时间队列和用户记忆，规划这一轮需要执行的受控命令。
-            参考命令批次是短期验收基线：必须保持 taskId、任务标题、参与方、关键时间和决策点含义一致；可以只做必要的短文案润色。
-            如果参考批次为空，说明该系统事件通常只需要系统层展示或当前没有任务更新；此时应返回空 commands，除非当前任务状态明确需要同步。
-            短信和提醒属于副作用，只能在参考批次授权相同目标或时间时输出。
+            plannerPolicy 是边界和授权，不是参考答案；不要照抄 fallback 文案或固定决策问题。
+            任务更新、追问、完成动作都通过 emit_scenario_commands 输出。
+            短信和提醒属于副作用，只能在 plannerPolicy 授权相同目标或时间时输出。
             不要输出解释文本，只调用 emit_scenario_commands。
 
-            referenceCommands:
-            $referenceCommandsJson
+            plannerPolicy:
+            $plannerPolicyJson
         """.trimIndent()
 
     fun userDecisionInstruction(
         userText: String,
-        referenceCommandsJson: String,
+        plannerPolicyJson: String,
     ): String =
         """
             用户刚刚回复：$userText。
-            你需要把这个回复转成受控任务命令。参考命令批次如下，必须保持 taskId、参与方、短信对象、关键时间和流程含义一致。
-            如果用户意思不清楚，使用 ask_user 追问，不要自行推进。
+            你需要先理解用户真实意图，再输出受控任务命令。
+            plannerPolicy 是边界和授权，不是参考答案；不要把所有未知回复都强行拉回现有按钮。
+            如果用户表达了任务终止、对象不存在、无需继续或条件变化，应更新任务为停止/完成并清空决策，而不是继续追问原二选一。
+            只有在用户确实仍围绕排期但表达不清时，才使用 ask_user 追问。
+            短信和提醒属于副作用，只能在 plannerPolicy 授权相同目标或时间时输出。
             不要输出解释文本，只调用 emit_scenario_commands。
 
-            referenceCommands:
-            $referenceCommandsJson
+            plannerPolicy:
+            $plannerPolicyJson
         """.trimIndent()
 }
 

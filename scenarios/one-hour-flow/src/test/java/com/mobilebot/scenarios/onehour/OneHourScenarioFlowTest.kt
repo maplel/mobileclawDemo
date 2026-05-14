@@ -12,6 +12,7 @@ import com.mobilebot.systemruntime.SystemRuntimeEvent
 import java.io.File
 import java.time.LocalDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.json.JSONObject
@@ -138,6 +139,46 @@ class OneHourScenarioFlowTest {
 
         assertTrue(effects.single() is OneHourFlowEffect.ShowSystemLayer)
         assertTrue(commands.isEmpty())
+    }
+
+    @Test
+    fun userDecisionPlannerPolicyDoesNotEmbedClarificationReferenceText() {
+        val commands = OneHourScenarioFlow().openSlotClarificationCommands("狗死了")
+        val policyJson = OneHourScenarioFlow.userDecisionPlannerPolicyJson(
+            userText = "狗死了",
+            referenceCommands = commands,
+        )
+        val instruction = OneHourScenarioPolicy.userDecisionInstruction(
+            userText = "狗死了",
+            plannerPolicyJson = policyJson,
+        )
+
+        assertTrue(instruction.contains("plannerPolicy"))
+        assertTrue(instruction.contains("deceased"))
+        assertTrue(instruction.contains("stop this grooming task"))
+        assertFalse(instruction.contains("你是想改到 14:00，还是保留原来的 17:00？"))
+        assertFalse(instruction.contains("referenceCommands"))
+    }
+
+    @Test
+    fun systemEventPlannerPolicyAuthorizesOnlyReferenceSideEffects() {
+        val flow = OneHourScenarioFlow()
+        flow.acceptPetCareSlot("可以")
+        val event = sms(
+            id = "driver-1320-confirm",
+            source = "Driver",
+            body = "好的，我 13:20 到楼下等 Kylin。",
+        )
+        val commands = OneHourScenarioFlow.commandReferences(event, flow.handle(event))
+        val policy = JSONObject(OneHourScenarioFlow.plannerPolicyJson(event, commands))
+
+        assertEquals("system_event", policy.getString("turn"))
+        assertEquals("driver-1320-confirm", policy.getString("eventId"))
+        assertEquals(
+            "2027-04-25T13:20:00",
+            policy.getJSONArray("authorizedReminders").getJSONObject(0).getString("scheduledFor"),
+        )
+        assertFalse(policy.toString().contains("司机老陈即将到楼下。"))
     }
 
     @Test

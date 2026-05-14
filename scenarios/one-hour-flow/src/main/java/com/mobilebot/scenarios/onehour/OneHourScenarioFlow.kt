@@ -16,6 +16,8 @@ import com.mobilebot.systemruntime.IncomingSmsEvent
 import com.mobilebot.systemruntime.ReminderFiredEvent
 import com.mobilebot.systemruntime.RuntimeNotificationEvent
 import com.mobilebot.systemruntime.SystemRuntimeEvent
+import org.json.JSONArray
+import org.json.JSONObject
 
 sealed interface OneHourFlowEffect {
     data class CreateTask(
@@ -219,6 +221,82 @@ class OneHourScenarioFlow {
                 )
                 else -> commands
             }
+        }
+
+        fun plannerPolicyJson(
+            event: SystemRuntimeEvent,
+            referenceCommands: List<ScenarioAgentCommand>,
+        ): String =
+            basePlannerPolicy(referenceCommands)
+                .put("turn", "system_event")
+                .put("eventId", event.id)
+                .put(
+                    "rules",
+                    JSONArray(
+                        listOf(
+                            "Treat eventFact as already observed system state.",
+                            "Use current task state and timeline queue to decide whether commands are needed.",
+                            "Return empty commands when the event only needs system-layer display.",
+                            "Do not copy fallback wording; write concise task updates that fit the observed fact.",
+                        ),
+                    ),
+                )
+                .toString()
+
+        fun userDecisionPlannerPolicyJson(
+            userText: String,
+            referenceCommands: List<ScenarioAgentCommand>,
+        ): String =
+            basePlannerPolicy(referenceCommands)
+                .put("turn", "user_decision")
+                .put("userText", userText)
+                .put(
+                    "rules",
+                    JSONArray(
+                        listOf(
+                            "Interpret the user's latest text first; do not force it into the existing buttons.",
+                            "If the user clearly accepts 14:00, continue the pet grooming coordination.",
+                            "If the user clearly keeps the original slot, finish this change request without Driver or reminder side effects.",
+                            "If the user reports the pet is unavailable, deceased, or no longer needs grooming, stop this grooming task, clear decision actions, and do not ask the 14:00/17:00 clarification again.",
+                            "If the reply is truly unclear and still about scheduling, ask one concise clarification question.",
+                            "Do not copy fallback wording; write the smallest command batch that matches the user's intent.",
+                        ),
+                    ),
+                )
+                .toString()
+
+        private fun basePlannerPolicy(referenceCommands: List<ScenarioAgentCommand>): JSONObject {
+            val taskIds = referenceCommands.map { it.taskId }.filter { it.isNotBlank() }.distinct()
+            val decisionActions = referenceCommands.flatMap { command ->
+                when (command) {
+                    is ScenarioAgentCommand.CreateTask -> command.seed.decision?.actions.orEmpty()
+                    is ScenarioAgentCommand.UpdateTask -> command.update.decision?.actions.orEmpty()
+                    is ScenarioAgentCommand.AskUser -> command.decision.actions
+                    else -> emptyList()
+                }
+            }.distinctBy { it.key }
+            val smsTargets = referenceCommands.filterIsInstance<ScenarioAgentCommand.SendSms>()
+                .map { JSONObject().put("taskId", it.taskId).put("to", it.to) }
+            val reminders = referenceCommands.filterIsInstance<ScenarioAgentCommand.CreateReminder>()
+                .map { JSONObject().put("taskId", it.taskId).put("scheduledFor", it.scheduledFor) }
+
+            return JSONObject()
+                .put("mode", "planner_policy_not_reference_answer")
+                .put("fallback", "local deterministic commands exist only for failure fallback and guard authorization")
+                .put("taskIds", JSONArray(taskIds))
+                .put("allowedStatuses", JSONArray(listOf("RUNNING", "BLOCKED", "DONE")))
+                .put(
+                    "existingDecisionActionKeys",
+                    JSONArray(decisionActions.map {
+                        JSONObject().put("key", it.key)
+                    }),
+                )
+                .put("authorizedSms", JSONArray(smsTargets))
+                .put("authorizedReminders", JSONArray(reminders))
+                .put(
+                    "sideEffectRule",
+                    "SMS and reminders are allowed only when listed in authorizedSms or authorizedReminders; otherwise update task state only.",
+                )
         }
 
         fun taskIdFromEffects(effects: List<OneHourFlowEffect>): String? =
