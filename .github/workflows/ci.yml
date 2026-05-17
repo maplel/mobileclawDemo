@@ -37,7 +37,7 @@ jobs:
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace --refresh-dependencies
 
       - name: Upload Debug APK
         if: success()
@@ -73,7 +73,7 @@ jobs:
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: Run JVM Unit Tests
-        run: ./gradlew test --no-daemon --stacktrace
+        run: ./gradlew test --no-daemon --stacktrace --refresh-dependencies
 
       - name: Upload Test Reports
         if: always()
@@ -110,7 +110,7 @@ jobs:
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: Run Android Lint
-        run: ./gradlew lintDebug --no-daemon --stacktrace
+        run: ./gradlew lintDebug --no-daemon --stacktrace --refresh-dependencies
         continue-on-error: true
 
       - name: Upload Lint Reports
