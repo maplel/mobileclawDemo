@@ -37,14 +37,16 @@ import com.mobilebot.scenarios.runtime.ScenarioSurfaceStatus
 import com.mobilebot.scenarios.runtime.ScenarioTaskSeed
 import com.mobilebot.scenarios.runtime.ScenarioTaskUpdate
 import com.mobilebot.scenarios.runtime.ScenarioTimeline
+import com.mobilebot.systemruntime.AlarmFiredEvent
 import com.mobilebot.systemruntime.CallEndedEvent
+import com.mobilebot.systemruntime.EmailSentEvent
+import com.mobilebot.systemruntime.IncomingEmailEvent
 import com.mobilebot.systemruntime.IncomingCallEvent
 import com.mobilebot.systemruntime.IncomingSmsEvent
 import com.mobilebot.systemruntime.ReminderFiredEvent
-import com.mobilebot.systemruntime.RuntimeNotificationEvent
 import com.mobilebot.systemruntime.SystemRuntime
 import com.mobilebot.systemruntime.SystemRuntimeEvent
-import com.mobilebot.systemruntime.SystemRuntimeScriptEvent
+import com.mobilebot.systemruntime.WebQueryResultEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,7 +61,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.time.Duration
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
@@ -92,18 +93,11 @@ class AgentExperienceViewModel
         private var liveClockAnchorMs = SystemClock.elapsedRealtime()
         private var fastClockJob: Job? = null
         private var taskSortCounter = 0L
-        private val deliveredTimelineEvents = mutableSetOf<String>()
         private val taskStates = linkedMapOf<String, AgentTaskState>()
         private val taskSessionIds = mutableMapOf<String, String>()
         private val pinnedTaskIds = linkedSetOf<String>()
         private val scenarioRunTracker = OneHourScenarioRunTracker()
         private val oneHourFlow = OneHourScenarioFlow()
-        // 系统事件只负责投放外部事实，具体任务编排由 Agent 处理。
-        private val timelineScript: List<ScenarioTimelineEvent> by lazy {
-            systemRuntime.scenarioEvents(ONE_HOUR_SCENARIO_ID)
-                .mapNotNull { it.toScenarioTimelineEvent(INITIAL_SCENARIO_CLOCK) }
-        }
-
         private val scenarioSpec = OneHourScenarioPolicy.config()
         private val scenario = AgentScenarioConfig(
             scenarioId = scenarioSpec.scenarioId,
@@ -117,6 +111,7 @@ class AgentExperienceViewModel
         val frame: StateFlow<AgentExperienceFrame> = _frame.asStateFlow()
 
         init {
+            systemRuntime.scheduleScenarioEvents(ONE_HOUR_SCENARIO_ID, scenarioClock)
             viewModelScope.launch {
                 bus.outbound.collect { msg ->
                     if (msg.channel != AgentLoop.CHANNEL) return@collect
@@ -146,7 +141,7 @@ class AgentExperienceViewModel
             if (deferredRetriggerInProgress) return
             if (!allowWhilePaused && shouldPauseLiveClock()) return
             if (fastClockJob?.isActive == true) return
-            val target = nextDeliverableTimelineEvent()?.triggerAt ?: return
+            val target = nextDeliverableTimelineEvent() ?: return
             clockMode = ScenarioClockMode.FastUntilNextEvent
             _frame.update { it.copy(clockMode = clockMode) }
             fastClockJob = viewModelScope.launch {
@@ -183,10 +178,11 @@ class AgentExperienceViewModel
             eventCounter = 0
             continuationCount = 0
             latestAgentDecisionIntent = null
-                pendingSelectedActionLabel = null
-                awaitingInitialPrecheckDecision = true
-                resetLiveClockAnchor()
-                taskSessionIds.clear()
+            pendingSelectedActionLabel = null
+            awaitingInitialPrecheckDecision = true
+            resetLiveClockAnchor()
+            taskSessionIds.clear()
+            systemRuntime.scheduleScenarioEvents(ONE_HOUR_SCENARIO_ID, scenarioClock)
             scenarioRunTracker.clear()
             val baseFrame = AgentExperienceFrame.initial(scenario).withClock(scenarioClock)
             val precheckDecision = OneHourScenarioPolicy.precheckDecision()
@@ -1623,7 +1619,7 @@ class AgentExperienceViewModel
             return withClock(scenarioClock)
         }
 
-        private fun tickScenarioClock() {
+        private suspend fun tickScenarioClock() {
             if (deferredRetriggerInProgress) return
             if (clockMode == ScenarioClockMode.FastUntilNextEvent) {
                 // 快进由单独 Job 执行，避免普通时钟循环并发推进。
@@ -1642,30 +1638,23 @@ class AgentExperienceViewModel
             }
         }
 
-        private fun handleDueTimelineEvents() {
-            val due = timelineScript
-                .filter { it.id !in deliveredTimelineEvents && !it.triggerAt.isAfter(scenarioClock) }
-                .sortedBy { it.triggerAt }
-            val deliverable = due.filterNot { shouldHoldTimelineEvent(it) }
-            if (deliverable.isEmpty()) return
-            for (event in deliverable) {
-                deliveredTimelineEvents += event.id
-                viewModelScope.launch {
-                    systemRuntime.publishEvent(event.toSystemRuntimeEvent())
-                }
-            }
-            if (clockMode == ScenarioClockMode.FastUntilNextEvent) {
+        private suspend fun handleDueTimelineEvents() {
+            val delivered = systemRuntime.advanceScenarioClock(
+                scenarioId = ONE_HOUR_SCENARIO_ID,
+                now = scenarioClock,
+                heldEventIds = heldRuntimeEventIds(),
+            )
+            if (delivered.isNotEmpty() && clockMode == ScenarioClockMode.FastUntilNextEvent) {
                 setClockModeLive()
             }
         }
 
-        private fun nextDeliverableTimelineEvent(): ScenarioTimelineEvent? =
-            timelineScript
-                .asSequence()
-                .filter { it.id !in deliveredTimelineEvents }
-                .filterNot { shouldHoldTimelineEvent(it) }
-                .filter { it.triggerAt.isAfter(scenarioClock) || it.triggerAt == scenarioClock }
-                .minByOrNull { it.triggerAt }
+        private fun nextDeliverableTimelineEvent(): LocalDateTime? =
+            systemRuntime.nextScheduledScenarioEvent(
+                scenarioId = ONE_HOUR_SCENARIO_ID,
+                now = scenarioClock,
+                heldEventIds = heldRuntimeEventIds(),
+            )?.triggerAt
 
         private fun setClockModeLive() {
             clockMode = ScenarioClockMode.Live
@@ -1683,8 +1672,12 @@ class AgentExperienceViewModel
                 _frame.value.systemNotification != null ||
                 _frame.value.activeCall != null
 
-        private fun shouldHoldTimelineEvent(event: ScenarioTimelineEvent): Boolean =
-            event.id in OneHourScenarioFlow.petAcceptanceRequiredEventIds && !oneHourFlow.isPetCareAccepted()
+        private fun heldRuntimeEventIds(): Set<String> =
+            if (oneHourFlow.isPetCareAccepted()) {
+                emptySet()
+            } else {
+                OneHourScenarioFlow.petAcceptanceRequiredEventIds
+            }
 
         private fun handleSystemRuntimeEvent(event: SystemRuntimeEvent) {
             _frame.update {
@@ -1867,6 +1860,10 @@ class AgentExperienceViewModel
                 is IncomingCallEvent -> "收到 $sourceText 来电：$detail"
                 is CallEndedEvent -> "$sourceText 通话结束：$detail"
                 is ReminderFiredEvent -> "触发提醒：$detail"
+                is AlarmFiredEvent -> "触发闹钟：$detail"
+                is IncomingEmailEvent -> "收到 $sourceText 邮件：$detail"
+                is EmailSentEvent -> "已发送邮件给 ${to}：$detail"
+                is WebQueryResultEvent -> "网页查询结果：$detail"
                 else -> "收到 $sourceText 通知：$detail"
             }
         }
@@ -2401,62 +2398,6 @@ class AgentExperienceViewModel
                     body = event.body,
                 )
             ).takeLast(MAX_SYSTEM_EVENTS)
-
-        private fun SystemRuntimeScriptEvent.toScenarioTimelineEvent(dayStart: LocalDateTime): ScenarioTimelineEvent? {
-            val timeValue = runCatching { LocalTime.parse(time, CLOCK_TIME_FORMATTER) }.getOrNull() ?: return null
-            return ScenarioTimelineEvent(
-                id = id,
-                triggerAt = dayStart.toLocalDate().atTime(timeValue),
-                type = type,
-                source = source,
-                title = title,
-                body = body,
-            )
-        }
-
-        private fun ScenarioTimelineEvent.toSystemRuntimeEvent(): SystemRuntimeEvent =
-            when (type) {
-                "incoming_sms" -> IncomingSmsEvent(
-                    id = id,
-                    occurredAt = triggerAt,
-                    source = source,
-                    title = title,
-                    body = body,
-                    from = source,
-                )
-                "incoming_call" -> IncomingCallEvent(
-                    id = id,
-                    occurredAt = triggerAt,
-                    source = source,
-                    title = title,
-                    body = body,
-                    contact = source,
-                )
-                "call_ended" -> CallEndedEvent(
-                    id = id,
-                    occurredAt = triggerAt,
-                    source = source,
-                    title = title,
-                    body = body,
-                    contact = source,
-                    audioRef = id,
-                )
-                "reminder_fired" -> ReminderFiredEvent(
-                    id = id,
-                    occurredAt = triggerAt,
-                    source = source,
-                    title = title,
-                    body = body,
-                    reminderId = id,
-                )
-                else -> com.mobilebot.systemruntime.RuntimeNotificationEvent(
-                    id = id,
-                    occurredAt = triggerAt,
-                    source = source,
-                    title = title,
-                    body = body,
-                )
-            }
 
         private fun selectedAppointmentIsAfternoon(): Boolean =
             OneHourScenarioPolicy.isAfternoonBathOnly(latestAgentDecisionIntent)

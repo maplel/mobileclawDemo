@@ -11,6 +11,9 @@ import dagger.multibindings.IntoSet
 @InstallIn(SingletonComponent::class)
 abstract class DeviceSystemToolModule {
     @Binds
+    abstract fun bindSystemRuntimeActions(runtime: SystemRuntime): SystemRuntimeActions
+
+    @Binds
     @IntoSet
     abstract fun bindDeviceSystemTool(tool: DeviceSystemTool): Tool
 
@@ -25,4 +28,12 @@ abstract class DeviceSystemToolModule {
     @Binds
     @IntoSet
     abstract fun bindSystemSearchContactsTool(tool: SystemSearchContactsTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindSystemSendEmailTool(tool: SystemSendEmailTool): Tool
+
+    @Binds
+    @IntoSet
+    abstract fun bindSystemQueryWebTool(tool: SystemQueryWebTool): Tool
 }

@@ -1,21 +1,11 @@
 package com.mobilebot.chat
 
 import com.mobilebot.domain.todo.TodoStatus
-import java.time.LocalDateTime
 
 enum class ScenarioClockMode {
     Live,
     FastUntilNextEvent,
 }
-
-data class ScenarioTimelineEvent(
-    val id: String,
-    val triggerAt: LocalDateTime,
-    val type: String,
-    val source: String,
-    val title: String,
-    val body: String,
-)
 
 data class AgentSystemEvent(
     val id: String,

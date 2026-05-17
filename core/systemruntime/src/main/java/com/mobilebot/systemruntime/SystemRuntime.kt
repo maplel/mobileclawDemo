@@ -21,6 +21,10 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,13 +35,14 @@ class SystemRuntime
     constructor(
         @ApplicationContext private val context: Context,
         private val userProfileStore: UserProfileStore,
-    ) {
+    ) : SystemRuntimeActions {
         private val smsOutbox = mutableListOf<Map<String, Any?>>()
         private val smsInbox = mutableListOf<Map<String, Any?>>()
         private val smsWatches = linkedMapOf<String, SmsWatch>()
         private val smsLock = Any()
         private val callLog = mutableListOf<Map<String, Any?>>()
         private val runtimeProfiles: List<SystemRuntimeProfile> by lazy { loadRuntimeProfiles() }
+        private val scheduler = SystemRuntimeScheduler()
         private var selectedServiceName: String? = null
         private val _events = MutableSharedFlow<SystemRuntimeEvent>(extraBufferCapacity = 16)
         val events: SharedFlow<SystemRuntimeEvent> = _events.asSharedFlow()
@@ -50,7 +55,7 @@ class SystemRuntime
             Log.i(TAG, "System runtime bootstrapped")
         }
 
-        suspend fun execute(
+        override suspend fun execute(
             action: String,
             params: JSONObject,
         ): SystemRuntimeResult {
@@ -63,6 +68,10 @@ class SystemRuntime
                 "call_log" -> ok("Call log returned", "calls" to callLog.toList())
                 "notification" -> notification(params)
                 "reminder", "long_reminder" -> reminder(params, normalized)
+                "set_reminder" -> reminder(params, "reminder")
+                "alarm", "set_alarm" -> alarm(params)
+                "email", "send_email" -> sendEmail(params)
+                "web_query", "query_web", "search_web" -> queryWeb(params)
                 "location" -> location(params)
                 "contacts" -> contacts(params)
                 "social_graph" -> socialGraph()
@@ -88,6 +97,37 @@ class SystemRuntime
                 .flatMap { it.scenarioEvents }
                 .filter { it.scenarioId == scenarioId }
                 .sortedBy { it.time }
+
+        fun scheduleScenarioEvents(
+            scenarioId: String,
+            dayStart: LocalDateTime,
+        ): Int {
+            val events = scenarioEvents(scenarioId)
+                .mapNotNull { it.toScheduledEvent(dayStart) }
+            scheduler.replaceScenarioEvents(scenarioId, events)
+            return events.size
+        }
+
+        suspend fun advanceScenarioClock(
+            scenarioId: String,
+            now: LocalDateTime,
+            heldEventIds: Set<String> = emptySet(),
+        ): List<SystemRuntimeEvent> {
+            val dueEvents = scheduler.dueEvents(scenarioId, now, heldEventIds)
+            dueEvents.forEach { publishEvent(it) }
+            return dueEvents
+        }
+
+        fun nextScheduledScenarioEvent(
+            scenarioId: String,
+            now: LocalDateTime,
+            heldEventIds: Set<String> = emptySet(),
+        ): SystemRuntimeScheduledEvent? =
+            scheduler.nextEvent(scenarioId, now, heldEventIds)
+
+        fun clearScenarioSchedule(scenarioId: String) {
+            scheduler.clearScenario(scenarioId)
+        }
 
         suspend fun publishEvent(event: SystemRuntimeEvent) {
             _events.emit(event)
@@ -256,8 +296,9 @@ class SystemRuntime
             val title = params.optString("title").ifBlank { params.optString("name").ifBlank { "提醒" } }
             val body = params.optString("message").ifBlank { params.optString("body") }
             val scheduledFor = reminderTimeText(params, title, body)
+            val id = "reminder-${System.currentTimeMillis()}"
             val item = mapOf(
-                "id" to "reminder-${System.currentTimeMillis()}",
+                "id" to id,
                 "type" to if (action == "long_reminder") "long_reminder" else "reminder",
                 "title" to title,
                 "body" to body,
@@ -265,7 +306,120 @@ class SystemRuntime
                 "status" to "scheduled",
                 "createdAt" to System.currentTimeMillis(),
             )
+            scheduledDateTime(params)?.let { triggerAt ->
+                scheduler.schedule(
+                    SystemRuntimeScheduledEvent(
+                        scenarioId = runtimeProfileId(params) ?: DEFAULT_RUNTIME_SCENARIO_ID,
+                        triggerAt = triggerAt,
+                        event = ReminderFiredEvent(
+                            id = id,
+                            occurredAt = triggerAt,
+                            source = params.optString("source").ifBlank { "System" },
+                            title = title,
+                            body = body,
+                            reminderId = id,
+                        ),
+                    ),
+                )
+            }
             return ok("Long reminder created: $title", "reminder" to item)
+        }
+
+        private fun alarm(params: JSONObject): SystemRuntimeResult {
+            val title = params.optString("title")
+                .ifBlank { params.optString("label") }
+                .ifBlank { "Alarm" }
+            val body = params.optString("message")
+                .ifBlank { params.optString("body") }
+                .ifBlank { title }
+            val triggerAt = scheduledDateTime(params)
+            val id = "alarm-${System.currentTimeMillis()}"
+            val item = mapOf(
+                "id" to id,
+                "title" to title,
+                "body" to body,
+                "scheduledFor" to (triggerAt?.toString() ?: reminderTimeText(params, title, body)),
+                "status" to "scheduled",
+                "createdAt" to System.currentTimeMillis(),
+            )
+            if (triggerAt != null) {
+                scheduler.schedule(
+                    SystemRuntimeScheduledEvent(
+                        scenarioId = runtimeProfileId(params) ?: DEFAULT_RUNTIME_SCENARIO_ID,
+                        triggerAt = triggerAt,
+                        event = AlarmFiredEvent(
+                            id = id,
+                            occurredAt = triggerAt,
+                            source = params.optString("source").ifBlank { "Clock" },
+                            title = title,
+                            body = body,
+                            alarmId = id,
+                        ),
+                    ),
+                )
+            }
+            return ok("Alarm scheduled: $title", "alarm" to item)
+        }
+
+        private suspend fun sendEmail(params: JSONObject): SystemRuntimeResult {
+            val to = firstText(params, "to", "recipient", "email", "address")
+                .ifBlank { "recipient@example.com" }
+            val subject = params.optString("subject").ifBlank { "No subject" }
+            val body = params.optString("body")
+                .ifBlank { params.optString("message") }
+                .ifBlank { "Message generated by AIOS." }
+            val id = "email-${System.currentTimeMillis()}"
+            val now = LocalDateTime.now()
+            val item = mapOf(
+                "id" to id,
+                "to" to to,
+                "subject" to subject,
+                "body" to body,
+                "status" to "sent",
+                "sentAt" to System.currentTimeMillis(),
+            )
+            publishEvent(
+                EmailSentEvent(
+                    id = id,
+                    occurredAt = now,
+                    source = "Mail",
+                    title = "Email sent",
+                    body = subject,
+                    to = to,
+                    subject = subject,
+                ),
+            )
+            return ok("Email sent to $to", "email" to item)
+        }
+
+        private suspend fun queryWeb(params: JSONObject): SystemRuntimeResult {
+            val query = firstText(params, "query", "q", "url")
+                .ifBlank { "current request" }
+            val url = params.optString("url")
+                .ifBlank { "https://search.local/?q=${query.replace(" ", "+")}" }
+            val summary = params.optString("summary")
+                .ifBlank { "Simulated web result for: $query" }
+            val id = "web-${System.currentTimeMillis()}"
+            val now = LocalDateTime.now()
+            val item = mapOf(
+                "id" to id,
+                "query" to query,
+                "url" to url,
+                "summary" to summary,
+                "queriedAt" to System.currentTimeMillis(),
+            )
+            publishEvent(
+                WebQueryResultEvent(
+                    id = id,
+                    occurredAt = now,
+                    source = "Web",
+                    title = "Web query result",
+                    body = summary,
+                    query = query,
+                    url = url,
+                ),
+            )
+            return ok("Web query returned", "web" to item)
         }
 
         private fun reminderTimeText(
@@ -290,6 +444,21 @@ class SystemRuntime
                 .find(text)
                 ?.value
                 ?: "按计划时间"
+        }
+
+        private fun scheduledDateTime(params: JSONObject): LocalDateTime? {
+            val explicit = firstText(
+                params,
+                "scheduledFor",
+                "scheduledAt",
+                "dateTime",
+                "datetime",
+                "triggerAt",
+                "triggerTime",
+            )
+            if (explicit.isBlank()) return null
+            val normalized = explicit.trim().replace(' ', 'T')
+            return runCatching { LocalDateTime.parse(normalized) }.getOrNull()
         }
 
         private fun payment(params: JSONObject): SystemRuntimeResult {
@@ -1183,6 +1352,95 @@ class SystemRuntime
                 }
             }
 
+        private fun SystemRuntimeScriptEvent.toScheduledEvent(dayStart: LocalDateTime): SystemRuntimeScheduledEvent? {
+            val timeValue = runCatching { LocalTime.parse(time, CLOCK_TIME_FORMATTER) }.getOrNull() ?: return null
+            val triggerAt = dayStart.toLocalDate().atTime(timeValue)
+            return SystemRuntimeScheduledEvent(
+                scenarioId = scenarioId,
+                triggerAt = triggerAt,
+                event = toRuntimeEvent(triggerAt),
+            )
+        }
+
+        private fun SystemRuntimeScriptEvent.toRuntimeEvent(triggerAt: LocalDateTime): SystemRuntimeEvent =
+            when (type) {
+                "incoming_sms" -> IncomingSmsEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source,
+                    title = title,
+                    body = body,
+                    from = source,
+                )
+                "incoming_call" -> IncomingCallEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source,
+                    title = title,
+                    body = body,
+                    contact = source,
+                )
+                "call_ended" -> CallEndedEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source,
+                    title = title,
+                    body = body,
+                    contact = source,
+                    audioRef = id,
+                )
+                "reminder_fired" -> ReminderFiredEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source,
+                    title = title,
+                    body = body,
+                    reminderId = id,
+                )
+                "alarm_fired" -> AlarmFiredEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source,
+                    title = title,
+                    body = body,
+                    alarmId = id,
+                )
+                "incoming_email" -> IncomingEmailEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source,
+                    title = title,
+                    body = body,
+                    from = source,
+                    subject = title,
+                )
+                "email_sent" -> EmailSentEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source.ifBlank { "Mail" },
+                    title = title,
+                    body = body,
+                    to = source,
+                    subject = title,
+                )
+                "web_query_result" -> WebQueryResultEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source.ifBlank { "Web" },
+                    title = title,
+                    body = body,
+                    query = title,
+                    url = "",
+                )
+                else -> RuntimeNotificationEvent(
+                    id = id,
+                    occurredAt = triggerAt,
+                    source = source,
+                    title = title,
+                    body = body,
+                )
+            }
+
         private fun parseSmsResponses(arr: JSONArray?): List<SmsResponseRule> =
             buildList {
                 if (arr == null) return@buildList
@@ -1307,5 +1565,7 @@ class SystemRuntime
             private const val SMS_MAX_DELAY_MS = 60_000L
             private const val SERVICE_CALL_ATTEMPTS = 2
             private const val SERVICE_CALL_RETRY_DELAY_MS = 750L
+            private const val DEFAULT_RUNTIME_SCENARIO_ID = "runtime"
+            private val CLOCK_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
         }
     }

@@ -58,6 +58,15 @@ data class ReminderFiredEvent(
     val reminderId: String,
 ) : SystemRuntimeEvent
 
+data class AlarmFiredEvent(
+    override val id: String,
+    override val occurredAt: LocalDateTime,
+    override val source: String,
+    override val title: String,
+    override val body: String,
+    val alarmId: String,
+) : SystemRuntimeEvent
+
 data class RuntimeNotificationEvent(
     override val id: String,
     override val occurredAt: LocalDateTime,
@@ -72,4 +81,34 @@ data class DeviceStateEvent(
     override val source: String,
     override val title: String,
     override val body: String,
+) : SystemRuntimeEvent
+
+data class IncomingEmailEvent(
+    override val id: String,
+    override val occurredAt: LocalDateTime,
+    override val source: String,
+    override val title: String,
+    override val body: String,
+    val from: String,
+    val subject: String,
+) : SystemRuntimeEvent
+
+data class EmailSentEvent(
+    override val id: String,
+    override val occurredAt: LocalDateTime,
+    override val source: String,
+    override val title: String,
+    override val body: String,
+    val to: String,
+    val subject: String,
+) : SystemRuntimeEvent
+
+data class WebQueryResultEvent(
+    override val id: String,
+    override val occurredAt: LocalDateTime,
+    override val source: String,
+    override val title: String,
+    override val body: String,
+    val query: String,
+    val url: String,
 ) : SystemRuntimeEvent

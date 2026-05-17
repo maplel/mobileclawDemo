@@ -24,7 +24,7 @@ class DeviceSystemTool
               "properties": {
                 "action": {
                   "type": "string",
-                  "description": "One of: send_sms, receive_sms, sms, dial_phone, call_log, notification, reminder, long_reminder, location, contacts, social_graph, device_state, memory_read."
+                  "description": "One of: send_sms, receive_sms, sms, dial_phone, call_log, notification, reminder, long_reminder, set_reminder, set_alarm, send_email, query_web, location, contacts, social_graph, device_state, memory_read."
                 },
                 "params": {
                   "type": "object",

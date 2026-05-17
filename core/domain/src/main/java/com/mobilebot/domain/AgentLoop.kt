@@ -1,6 +1,7 @@
 package com.mobilebot.domain
 
 import android.util.Log
+import com.mobilebot.domain.agent.AgentInput
 import com.mobilebot.domain.agent.ToolCallAgentLoop
 import com.mobilebot.domain.repository.SessionRepository
 import kotlinx.coroutines.sync.Mutex
@@ -39,6 +40,13 @@ class AgentLoop
                     throw e
                 }
             }
+        }
+
+        suspend fun processInput(input: AgentInput) {
+            processUserMessage(
+                chatId = input.chatId,
+                text = input.toPromptText(),
+            )
         }
 
         companion object {
