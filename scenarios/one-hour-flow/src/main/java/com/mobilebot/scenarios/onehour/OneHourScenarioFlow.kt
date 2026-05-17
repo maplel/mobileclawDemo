@@ -7,6 +7,7 @@ import com.mobilebot.scenarios.petgrooming.PetGroomingTaskSurface
 import com.mobilebot.scenarios.runtime.ScenarioAgentCommand
 import com.mobilebot.scenarios.runtime.ScenarioCommandAuthorization
 import com.mobilebot.scenarios.runtime.ScenarioLog
+import com.mobilebot.scenarios.runtime.ScenarioParticipant
 import com.mobilebot.scenarios.runtime.ScenarioProgress
 import com.mobilebot.scenarios.runtime.ScenarioReminderAuthorization
 import com.mobilebot.scenarios.runtime.ScenarioSmsAuthorization
@@ -277,26 +278,35 @@ class OneHourScenarioFlow {
 
         fun plannerPolicyJson(
             event: SystemRuntimeEvent,
-        ): String =
-            basePlannerPolicy(
-                authorization = commandAuthorizationForEvent(event),
+        ): String {
+            val authorization = commandAuthorizationForEvent(event)
+            return basePlannerPolicy(
+                authorization = authorization,
                 decisionActions = decisionActionsForEvent(event),
+                currentFactParticipants = participantsForCurrentFact(event),
             )
                 .put("turn", "system_event")
-                .put("eventId", event.id)
+                .put("emptyCommands", emptyCommandPolicy(authorization))
+                .put("taskPlanningGoal", taskPlanningGoal(authorization.taskIds))
+                .apply {
+                    currentObservedContext(event)?.let { put("currentObservedContext", it) }
+                }
                 .put(
                     "rules",
                     JSONArray(
                         listOf(
                             "Treat eventFact as already observed system state.",
-                            "Use current task state and timeline queue to decide whether commands are needed.",
-                            "Return empty commands when the event only needs system-layer display.",
+                            "Use only the observed event fact and current task state to decide whether commands are needed.",
+                            "Return empty commands only when plannerPolicy.emptyCommands allows it or the observed fact is unrelated to authorized tasks.",
                             "plannerPolicy is runtime authorization, not a deterministic answer key.",
                             "Write concise task updates that fit the observed fact.",
+                            "Every plannerPolicy.requiredParticipants item matching the task must appear in participants or participantsToAdd in your command.",
+                            "When plannerPolicy.decisionPolicy.visibleDecisionActionsRequired is true, keep the task BLOCKED and include decision actions exactly in the task command.",
                         ),
                     ),
                 )
                 .toString()
+        }
 
         fun userDecisionPlannerPolicyJson(
             userText: String,
@@ -327,12 +337,18 @@ class OneHourScenarioFlow {
         private fun basePlannerPolicy(
             authorization: ScenarioCommandAuthorization,
             decisionActions: List<Pair<String, String>> = emptyList(),
+            currentFactParticipants: List<ScenarioParticipant> = emptyList(),
         ): JSONObject {
             val taskIds = authorization.taskIds.filter { it.isNotBlank() }.distinct()
             val smsTargets = authorization.sms
                 .map { JSONObject().put("taskId", it.taskId).put("to", it.to) }
             val reminders = authorization.reminders
                 .map { JSONObject().put("taskId", it.taskId).put("scheduledFor", it.scheduledFor) }
+            val participantPolicy = participantPolicy(
+                taskIds = taskIds,
+                currentFactParticipants = currentFactParticipants,
+                authorization = authorization,
+            )
 
             return JSONObject()
                 .put("mode", "llm_planner_runtime_policy")
@@ -346,11 +362,154 @@ class OneHourScenarioFlow {
                 )
                 .put("authorizedSms", JSONArray(smsTargets))
                 .put("authorizedReminders", JSONArray(reminders))
+                .put("decisionPolicy", decisionPolicy(decisionActions))
+                .put("requiredParticipants", participantPolicy.getJSONArray("requiredParticipants"))
+                .put("participantPolicy", participantPolicy)
                 .put(
                     "sideEffectRule",
                     "SMS and reminders are allowed only when listed in authorizedSms or authorizedReminders; otherwise update task state only.",
                 )
         }
+
+        private fun decisionPolicy(decisionActions: List<Pair<String, String>>): JSONObject =
+            JSONObject()
+                .put("visibleDecisionActionsRequired", decisionActions.isNotEmpty())
+                .put(
+                    "rules",
+                    JSONArray(
+                        listOf(
+                            "If visibleDecisionActions is non-empty, the task command must include decision.text and decision.actions using exactly those visible labels and keys.",
+                            "For an observed scheduling option that needs user confirmation, set task status to BLOCKED until the user chooses.",
+                            "Do not drop visibleDecisionActions when creating or updating the task surface.",
+                            "Only omit decision when the observed fact is already resolved and does not require a user choice.",
+                        ),
+                    ),
+                )
+
+        private fun participantPolicy(
+            taskIds: List<String>,
+            currentFactParticipants: List<ScenarioParticipant>,
+            authorization: ScenarioCommandAuthorization,
+        ): JSONObject {
+            val currentFacts = currentFactParticipants.distinctBy { it.id }
+            val sideEffectTargetParticipants = authorization.sms
+                .mapNotNull { sms ->
+                    participantForSource(sms.to)?.let { participant -> sms.taskId to participant }
+                }
+                .distinctBy { (taskId, participant) -> "$taskId:${participant.id}" }
+            val requiredParticipants = (
+                taskIds.flatMap { taskId -> baselineParticipantsForTask(taskId).map { taskId to it } } +
+                    currentFacts.flatMap { participant -> taskIds.map { taskId -> taskId to participant } } +
+                    sideEffectTargetParticipants
+                )
+                .distinctBy { (taskId, participant) -> "$taskId:${participant.id}" }
+
+            return JSONObject()
+                .put(
+                    "requiredParticipants",
+                    JSONArray(
+                        requiredParticipants.map { (taskId, participant) ->
+                            participantToPolicyJson(participant)
+                                .put("taskId", taskId)
+                                .put("requiredIn", "participants_or_participantsToAdd")
+                        },
+                    ),
+                )
+                .put(
+                    "knownParticipantsByTask",
+                    JSONArray(
+                        taskIds.map { taskId ->
+                            JSONObject()
+                                .put("taskId", taskId)
+                                .put(
+                                    "baselineParticipants",
+                                    JSONArray(baselineParticipantsForTask(taskId).map(::participantToPolicyJson)),
+                                )
+                                .put(
+                                    "knownParticipants",
+                                    JSONArray(knownParticipantsForTask(taskId).map(::participantToPolicyJson)),
+                                )
+                        },
+                    ),
+                )
+                .put("currentFactParticipants", JSONArray(currentFacts.map(::participantToPolicyJson)))
+                .put(
+                    "sideEffectTargetParticipants",
+                    JSONArray(
+                        sideEffectTargetParticipants.map { (taskId, participant) ->
+                            participantToPolicyJson(participant).put("taskId", taskId)
+                        },
+                    ),
+                )
+                .put(
+                    "rules",
+                    JSONArray(
+                        listOf(
+                            "For create_task, include participants for the task baseline and for observed currentFactParticipants that belong to the task.",
+                            "For update_task, add newly involved actors via participantsToAdd or provide a complete participants list; do not rely on the UI to infer participants.",
+                            "Every requiredParticipants item matching the task must appear in participants or participantsToAdd in the same command.",
+                            "When sending SMS to an authorized target, include that target as a participant in the same turn if newly involved.",
+                            "knownParticipantsByTask is controlled vocabulary and guidance; do not add every known participant before they are involved.",
+                            "If the observed fact introduces a real participant not listed here, emit it explicitly instead of dropping it.",
+                        ),
+                    ),
+                )
+        }
+
+        private fun baselineParticipantsForTask(taskId: String): List<ScenarioParticipant> =
+            when (taskId) {
+                PetGroomingTaskSurface.TASK_ID -> listOf(PETSMART)
+                FamilyShoppingTaskSurface.TASK_ID -> listOf(ELLA)
+                ColdchainDeliveryTaskSurface.TASK_ID -> listOf(COURIER)
+                HealthSupplyTaskSurface.TASK_ID -> listOf(PHARMACY)
+                else -> emptyList()
+            }
+
+        private fun knownParticipantsForTask(taskId: String): List<ScenarioParticipant> =
+            when (taskId) {
+                PetGroomingTaskSurface.TASK_ID -> listOf(PETSMART, DRIVER, PROPERTY)
+                FamilyShoppingTaskSurface.TASK_ID -> listOf(ELLA, OLE)
+                ColdchainDeliveryTaskSurface.TASK_ID -> listOf(COURIER, PROPERTY)
+                HealthSupplyTaskSurface.TASK_ID -> listOf(PHARMACY)
+                else -> emptyList()
+            }
+
+        private fun participantsForCurrentFact(event: SystemRuntimeEvent): List<ScenarioParticipant> =
+            listOfNotNull(participantForSource(event.source))
+
+        private fun participantToPolicyJson(participant: ScenarioParticipant): JSONObject =
+            JSONObject()
+                .put("id", participant.id)
+                .put("label", participant.label)
+                .put("displayName", participant.displayName)
+                .put("role", participant.role)
+
+        private fun emptyCommandPolicy(authorization: ScenarioCommandAuthorization): String =
+            if (authorization.taskIds.isEmpty()) {
+                "allowed_for_system_layer_only"
+            } else {
+                "avoid_empty_when_observed_fact_matches_authorized_task"
+            }
+
+        private fun taskPlanningGoal(taskIds: Set<String>): String =
+            when {
+                FamilyShoppingTaskSurface.TASK_ID in taskIds ->
+                    "Manage the family shopping task from the observed family call, family SMS, or market delivery fact. Create the task if it does not exist; otherwise update the same task."
+                ColdchainDeliveryTaskSurface.TASK_ID in taskIds ->
+                    "Manage the coldchain delivery task from the observed courier or property fact. Create the task if it does not exist; otherwise update the same task."
+                HealthSupplyTaskSurface.TASK_ID in taskIds ->
+                    "Manage the routine health supply task from the observed pharmacy or delivery fact. Create the task if it does not exist; otherwise update the same task."
+                PetGroomingTaskSurface.TASK_ID in taskIds ->
+                    "Manage the pet grooming coordination task from the observed shop, driver, property, or reminder fact."
+                else -> "No task command is required unless the observed fact clearly belongs to an authorized task."
+            }
+
+        private fun currentObservedContext(event: SystemRuntimeEvent): String? =
+            when (event) {
+                is CallEndedEvent -> FamilyShoppingTaskSurface.transcriptForAudioRef(event.audioRef)
+                    ?.let { "Call transcript from ${event.contact}: ${it.transcript}" }
+                else -> null
+            }
 
         fun commandAuthorizationForEvent(event: SystemRuntimeEvent): ScenarioCommandAuthorization =
             ScenarioCommandAuthorization(
@@ -466,6 +625,69 @@ class OneHourScenarioFlow {
             "driver-arrived-petsmart",
             "petsmart-service-started",
             "petsmart-service-progress",
+        )
+
+        private fun participantForSource(source: String): ScenarioParticipant? =
+            when {
+                source.equals("PetSmart", ignoreCase = true) -> PETSMART
+                source.equals("Driver", ignoreCase = true) ||
+                    source.contains("司机") ||
+                    source.contains("老陈") -> DRIVER
+                source.equals("Ella", ignoreCase = true) -> ELLA
+                source.equals("Ole", ignoreCase = true) -> OLE
+                source.contains("顺丰冷链") -> COURIER
+                source.contains("物业") -> PROPERTY
+                source.contains("美团买药") -> PHARMACY
+                else -> null
+            }
+
+        private val PETSMART = ScenarioParticipant(
+            id = "petsmart",
+            label = "PS",
+            displayName = "PetSmart",
+            role = "grooming_shop",
+        )
+
+        private val DRIVER = ScenarioParticipant(
+            id = "driver",
+            label = "DR",
+            displayName = "Driver",
+            role = "private_driver",
+        )
+
+        private val ELLA = ScenarioParticipant(
+            id = "ella",
+            label = "E",
+            displayName = "Ella",
+            role = "family",
+        )
+
+        private val OLE = ScenarioParticipant(
+            id = "ole",
+            label = "O",
+            displayName = "Ole",
+            role = "market",
+        )
+
+        private val COURIER = ScenarioParticipant(
+            id = "courier-coldchain",
+            label = "顺",
+            displayName = "顺丰冷链",
+            role = "delivery_service",
+        )
+
+        private val PROPERTY = ScenarioParticipant(
+            id = "property-service",
+            label = "物",
+            displayName = "物业管家",
+            role = "property_service",
+        )
+
+        private val PHARMACY = ScenarioParticipant(
+            id = "pharmacy-service",
+            label = "药",
+            displayName = "美团买药",
+            role = "pharmacy_service",
         )
     }
 }

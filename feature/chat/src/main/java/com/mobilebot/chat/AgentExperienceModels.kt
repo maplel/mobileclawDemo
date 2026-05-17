@@ -51,6 +51,7 @@ data class AgentTaskState(
     val stageCards: List<AgentStageCard> = emptyList(),
     val decisionPrompt: DecisionPrompt? = null,
     val activeActionValue: String? = null,
+    val selectedAction: ActionButton? = null,
     val finalSummary: String? = null,
     val error: String? = null,
 )
@@ -164,6 +165,7 @@ data class AgentExperienceFrame(
     val stageCards: List<AgentStageCard> = emptyList(),
     val decisionPrompt: DecisionPrompt? = null,
     val activeActionValue: String? = null,
+    val selectedAction: ActionButton? = null,
     val finalSummary: String? = null,
     val debugTrace: List<String> = emptyList(),
     val error: String? = null,

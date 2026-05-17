@@ -315,7 +315,6 @@ object ScenarioCommandCodec {
         val progress = obj.optJSONObject("progress") ?: defaultProgress()
         val summary = visibleSummary(obj)
         val conversations = parseConversations(obj.optJSONArray("conversations"))
-            .ifEmpty { summary?.let { listOf(ScenarioConversation(ScenarioSurfaceRole.AGENT, it)) }.orEmpty() }
         val logs = parseLogs(obj.optJSONArray("logs"))
             .ifEmpty { summary?.let { listOf(ScenarioLog(it)) }.orEmpty() }
         return ScenarioTaskUpdate(

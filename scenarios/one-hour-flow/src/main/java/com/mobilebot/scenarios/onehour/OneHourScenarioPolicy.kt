@@ -180,12 +180,10 @@ object OneHourScenarioPolicy {
         }
 
     fun orchestrationInstruction(
-        eventId: String,
         plannerPolicyJson: String,
     ): String =
         """
-            当前事件 id：$eventId。
-            你需要根据系统事件事实、当前任务状态、时间队列和用户记忆，规划这一轮需要执行的受控命令。
+            你需要根据系统事件事实、当前任务状态和用户记忆，规划这一轮需要执行的受控命令。
             plannerPolicy 是运行时边界和授权，不是参考答案；不要假设存在本地兜底业务结果。
             任务更新、追问、完成动作都通过 emit_scenario_commands 输出。
             如果需要追问用户，ask_user 必须包含 decision.text 和 decision.actions，action 必须包含 label/key。

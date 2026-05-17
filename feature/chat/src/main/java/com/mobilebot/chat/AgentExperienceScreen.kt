@@ -677,10 +677,11 @@ private fun SessionArea(
     modifier: Modifier = Modifier,
 ) {
     val messages = frame.conversationItems
-    val actions = remember(frame.decisionPrompt, frame.hasStarted, frame.finalSummary, frame.error) {
+    val actions = remember(frame.decisionPrompt, frame.selectedAction, frame.hasStarted, frame.finalSummary, frame.error) {
         conversationActions(frame)
     }
     val activeDecision = frame.decisionPrompt != null
+    val resolvedAction = frame.decisionPrompt == null && frame.selectedAction != null
     val listState = rememberLazyListState()
     val lastItemIndex = messages.lastIndex + if (actions.isNotEmpty()) 1 else 0
     val latestMessageKey = messages.lastOrNull()?.let { message ->
@@ -724,7 +725,8 @@ private fun SessionArea(
                     ConversationActionRow(
                         actions = actions,
                         activeActionValue = frame.activeActionValue,
-                        enabled = !frame.busy,
+                        enabled = !frame.busy && !resolvedAction,
+                        loading = frame.busy,
                         onAction = { action ->
                             if (activeDecision) onAction(action) else onStart()
                         },
@@ -740,6 +742,7 @@ private fun ConversationActionRow(
     actions: List<ActionButton>,
     activeActionValue: String?,
     enabled: Boolean,
+    loading: Boolean,
     onAction: (ActionButton) -> Unit,
 ) {
     LazyRow(
@@ -753,6 +756,7 @@ private fun ConversationActionRow(
             ActionOptionBubble(
                 label = action.label,
                 selected = action.value == activeActionValue,
+                loading = loading && action.value == activeActionValue,
                 enabled = enabled,
                 onClick = { onAction(action) },
             )
@@ -763,6 +767,7 @@ private fun ConversationActionRow(
 private fun ActionOptionBubble(
     label: String,
     selected: Boolean,
+    loading: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -780,7 +785,7 @@ private fun ActionOptionBubble(
         modifier = Modifier
             .height(67.dp)
             .widthIn(max = 180.dp)
-            .loadingActionBorder(selected = selected, phase = phase),
+            .loadingActionBorder(selected = loading, phase = phase),
         enabled = enabled,
         color = when {
             selected -> AgentPanelActive
@@ -1708,6 +1713,7 @@ private fun PinIndicator(
 private fun conversationActions(frame: AgentExperienceFrame): List<ActionButton> =
     when {
         frame.decisionPrompt != null -> frame.decisionPrompt.actions
+        frame.selectedAction != null -> listOf(frame.selectedAction)
         frame.error != null -> listOf(ActionButton("重试", "Retry"))
         else -> emptyList()
     }

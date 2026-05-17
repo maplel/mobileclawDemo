@@ -15,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONArray
 import org.json.JSONObject
 
 class OneHourScenarioFlowTest {
@@ -185,6 +186,11 @@ class OneHourScenarioFlowTest {
         val policy = JSONObject(policyJson)
         assertEquals("PetSmart", policy.getJSONArray("authorizedSms").getJSONObject(0).getString("to"))
         assertEquals("Driver", policy.getJSONArray("authorizedSms").getJSONObject(1).getString("to"))
+        assertEquals(
+            listOf("PS", "DR"),
+            labels(policy.getJSONObject("participantPolicy").getJSONArray("sideEffectTargetParticipants")),
+        )
+        assertEquals(listOf("PS", "DR"), labels(policy.getJSONArray("requiredParticipants")))
         assertEquals("可以", policy.getJSONArray("visibleDecisionActions").getJSONObject(0).getString("label"))
     }
 
@@ -198,11 +204,23 @@ class OneHourScenarioFlowTest {
         val policy = JSONObject(OneHourScenarioFlow.plannerPolicyJson(event))
 
         assertEquals("system_event", policy.getString("turn"))
-        assertEquals("driver-1320-confirm", policy.getString("eventId"))
+        assertFalse(policy.has("eventId"))
         assertEquals("pet-grooming-live", policy.getJSONArray("taskIds").getString(0))
         assertEquals(
             "2027-04-25T13:20:00",
             policy.getJSONArray("authorizedReminders").getJSONObject(0).getString("scheduledFor"),
+        )
+        val participantPolicy = policy.getJSONObject("participantPolicy")
+        assertEquals(listOf("PS", "DR"), labels(policy.getJSONArray("requiredParticipants")))
+        assertEquals(listOf("DR"), labels(participantPolicy.getJSONArray("currentFactParticipants")))
+        assertEquals(
+            listOf("PS"),
+            labels(
+                participantPolicy
+                    .getJSONArray("knownParticipantsByTask")
+                    .getJSONObject(0)
+                    .getJSONArray("baselineParticipants"),
+            ),
         )
         assertFalse(policy.toString().contains("司机老陈即将到楼下。"))
     }
@@ -218,8 +236,43 @@ class OneHourScenarioFlowTest {
 
         assertEquals("pet-grooming-live", policy.getJSONArray("taskIds").getString(0))
         assertEquals("可以", policy.getJSONArray("visibleDecisionActions").getJSONObject(0).getString("label"))
+        assertTrue(policy.getJSONObject("decisionPolicy").getBoolean("visibleDecisionActionsRequired"))
         assertEquals(0, policy.getJSONArray("authorizedSms").length())
         assertEquals(0, policy.getJSONArray("authorizedReminders").length())
+        val participantPolicy = policy.getJSONObject("participantPolicy")
+        assertEquals(listOf("PS"), labels(policy.getJSONArray("requiredParticipants")))
+        assertEquals(listOf("PS"), labels(participantPolicy.getJSONArray("currentFactParticipants")))
+        assertEquals(
+            listOf("PS"),
+            labels(
+                participantPolicy
+                    .getJSONArray("knownParticipantsByTask")
+                    .getJSONObject(0)
+                    .getJSONArray("baselineParticipants"),
+            ),
+        )
+    }
+
+    @Test
+    fun callEndedPlannerPolicyIncludesObservedTranscriptWithoutScriptId() {
+        val event = CallEndedEvent(
+            id = "ella-call-ended",
+            occurredAt = now.withHour(13).withMinute(11),
+            source = "Ella",
+            title = "Ella 通话结束",
+            body = "通话结束，音频可用于提取家庭采购待办。",
+            contact = "Ella",
+            audioRef = "ella-call-ended",
+        )
+        val policy = JSONObject(OneHourScenarioFlow.plannerPolicyJson(event))
+
+        assertFalse(policy.has("eventId"))
+        assertEquals("family-shopping-live", policy.getJSONArray("taskIds").getString(0))
+        assertTrue(policy.getString("emptyCommands").contains("avoid_empty"))
+        assertTrue(policy.getString("taskPlanningGoal").contains("family shopping"))
+        assertTrue(policy.getString("currentObservedContext").contains("低脂牛奶"))
+        assertTrue(policy.getString("currentObservedContext").contains("常用洗衣液"))
+        assertFalse(policy.toString().contains("ella-call-ended"))
     }
 
     @Test
@@ -443,6 +496,9 @@ class OneHourScenarioFlowTest {
         ).firstOrNull { it.isFile } ?: error("one-hour agent context not found")
         return JSONObject(file.readText().trimStart('\uFEFF').trim())
     }
+
+    private fun labels(array: JSONArray): List<String> =
+        (0 until array.length()).map { array.getJSONObject(it).getString("label") }
 
     private fun JSONObject.toRuntimeEvent(): SystemRuntimeEvent {
         val id = getString("id")

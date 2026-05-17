@@ -50,7 +50,13 @@ class SystemSendSmsTool
                 val result = runtime.sendSmsFromTool(
                     JSONObject()
                         .put("to", to)
-                        .put("message", message),
+                        .put("message", message)
+                        .also { payload ->
+                            for (key in args.keys()) {
+                                if (key == "to" || key == "message" || key == "text" || key == "body" || payload.has(key)) continue
+                                payload.put(key, args.opt(key))
+                            }
+                        },
                 )
                 ToolResult(result.ok, result.message, JSONObject(result.data).toString())
             } catch (e: Exception) {

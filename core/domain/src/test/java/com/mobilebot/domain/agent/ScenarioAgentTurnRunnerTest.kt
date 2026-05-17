@@ -206,7 +206,7 @@ class ScenarioAgentTurnRunnerTest {
     }
 
     @Test
-    fun includesPlannerContextDigestsInPrompt() = runBlocking {
+    fun excludesTimelineQueueFromPrompt() = runBlocking {
         val llm = StubLlmClient(
             LlmResponse(
                 content = "",
@@ -224,7 +224,6 @@ class ScenarioAgentTurnRunnerTest {
         runner(llm).run(
             baseInput(
                 allTaskSnapshots = "id: task-a\nstatus: RUNNING",
-                timelineDigest = "currentEvent: ella-call\nupcoming:\n- 13:11 ella-call-ended",
                 recentToolResults = "pet-task: 13:05 sent sms",
             ),
         )
@@ -232,8 +231,10 @@ class ScenarioAgentTurnRunnerTest {
         val prompt = llm.requests.single().last { it.role == "user" }.content.orEmpty()
         assertTrue(prompt.contains("allTasks:"))
         assertTrue(prompt.contains("id: task-a"))
-        assertTrue(prompt.contains("timelineQueue:"))
-        assertTrue(prompt.contains("currentEvent: ella-call"))
+        assertFalse(prompt.contains("timelineQueue:"))
+        assertFalse(prompt.contains("upcoming:"))
+        assertFalse(prompt.contains("currentEvent: ella-call"))
+        assertFalse(prompt.contains("ella-call-ended"))
         assertTrue(prompt.contains("recentToolResults:"))
         assertTrue(prompt.contains("pet-task: 13:05 sent sms"))
     }
@@ -288,7 +289,6 @@ class ScenarioAgentTurnRunnerTest {
         normalizedIntent: AgentDecisionIntent? = null,
         presentedActions: List<AgentDecisionAction> = emptyList(),
         allTaskSnapshots: String = "",
-        timelineDigest: String = "",
         recentToolResults: String = "",
     ): ScenarioAgentTurnInput =
         ScenarioAgentTurnInput(
@@ -300,7 +300,6 @@ class ScenarioAgentTurnRunnerTest {
             eventFact = "收到宠物店短信。",
             currentTaskSnapshot = "尚未创建任务。",
             allTaskSnapshots = allTaskSnapshots,
-            timelineDigest = timelineDigest,
             recentToolResults = recentToolResults,
             userInput = userInput,
             normalizedIntent = normalizedIntent,

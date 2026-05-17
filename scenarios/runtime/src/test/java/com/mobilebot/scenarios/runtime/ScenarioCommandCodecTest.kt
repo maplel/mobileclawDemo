@@ -152,7 +152,7 @@ class ScenarioCommandCodecTest {
 
         assertTrue(result.isOk)
         val update = result.batch?.commands.orEmpty().single() as ScenarioAgentCommand.UpdateTask
-        assertEquals("Task no longer needs action.", update.update.conversations.single().text)
+        assertTrue(update.update.conversations.isEmpty())
         assertEquals("Task no longer needs action.", update.update.logs.single().text)
         assertEquals("Task no longer needs action.", update.update.finalSummary)
     }
