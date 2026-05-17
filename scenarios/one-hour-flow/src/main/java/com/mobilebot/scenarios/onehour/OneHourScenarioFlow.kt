@@ -290,6 +290,7 @@ class OneHourScenarioFlow {
                 .put("taskPlanningGoal", taskPlanningGoal(authorization.taskIds))
                 .apply {
                     currentObservedContext(event)?.let { put("currentObservedContext", it) }
+                    petRouteUpdateProtocol(event)?.let { put("petRouteUpdateProtocol", it) }
                 }
                 .put(
                     "rules",
@@ -301,6 +302,8 @@ class OneHourScenarioFlow {
                             "plannerPolicy is runtime authorization, not a deterministic answer key.",
                             "Write concise task updates that fit the observed fact.",
                             "Every plannerPolicy.requiredParticipants item matching the task must appear in participants or participantsToAdd in your command.",
+                            "If you output participants on update_task, it is a full replacement list; include still-involved currentTask/allTasks participants plus newly observed participants.",
+                            "When plannerPolicy provides a protocol block, follow its command order and key constraints for the current observed fact.",
                             "When plannerPolicy.decisionPolicy.visibleDecisionActionsRequired is true, keep the task BLOCKED and include decision actions exactly in the task command.",
                         ),
                     ),
@@ -319,12 +322,16 @@ class OneHourScenarioFlow {
             )
                 .put("turn", "user_decision")
                 .put("userText", userText)
+                .apply {
+                    petSlotAcceptanceProtocol(taskId)?.let { put("petSlotAcceptanceProtocol", it) }
+                }
                 .put(
                     "rules",
                     JSONArray(
                         listOf(
                             "Interpret the user's latest text first; do not force it into the existing buttons.",
                             "If the user clearly accepts 14:00, continue the pet grooming coordination.",
+                            "For 14:00 acceptance, follow plannerPolicy.petSlotAcceptanceProtocol when present.",
                             "If the user clearly keeps the original slot, finish this change request without Driver or reminder side effects.",
                             "If the user changes the task premise or says the request no longer needs action, stop or complete this task and clear decision actions.",
                             "If the reply is truly unclear and still about scheduling, ask one concise clarification question.",
@@ -333,6 +340,65 @@ class OneHourScenarioFlow {
                     ),
                 )
                 .toString()
+
+        private fun petSlotAcceptanceProtocol(taskId: String?): JSONObject? =
+            if (taskId == PetGroomingTaskSurface.TASK_ID) {
+                JSONObject()
+                    .put("appliesWhen", "user clearly accepts the visible PetSmart 14:00 slot")
+                    .put("driverPickupTime", "13:20")
+                    .put("appointmentTime", "14:00")
+                    .put(
+                        "requiredCommandOrder",
+                        JSONArray(
+                            listOf(
+                                "update_task: status RUNNING, participants include PetSmart and Driver",
+                                "send_sms to PetSmart: confirm Kylin 14:00 bath and de-shedding slot",
+                                "send_sms to Driver: ask for 13:20 home pickup and arrival at PetSmart before 14:00",
+                                "wait_sms from Driver: wait for pickup/departure confirmation",
+                            ),
+                        ),
+                    )
+                    .put(
+                        "rules",
+                        JSONArray(
+                            listOf(
+                                "Do not invent a later pickup time such as 13:45.",
+                                "Do not omit wait_sms after sending the Driver coordination SMS.",
+                                "Use the contact displayName Driver in participant metadata.",
+                            ),
+                        ),
+                    )
+            } else {
+                null
+            }
+
+        private fun petRouteUpdateProtocol(event: SystemRuntimeEvent): JSONObject? =
+            if (event.id == "property-parking-notice") {
+                JSONObject()
+                    .put("appliesWhen", "observed property parking or route notice affects Driver's pickup or dropoff route")
+                    .put("authorizedTarget", "Driver")
+                    .put(
+                        "requiredCommandOrder",
+                        JSONArray(
+                            listOf(
+                                "update_task: preserve PetSmart and Driver, add property-service, summarize the parking or route fact",
+                                "send_sms to Driver: pass the observed route or parking change that affects pickup or dropoff",
+                            ),
+                        ),
+                    )
+                    .put(
+                        "rules",
+                        JSONArray(
+                            listOf(
+                                "If the observed property notice changes where Driver should enter, exit, wait, or park, send the authorized Driver SMS in the same turn.",
+                                "Do not notify PetSmart for a building parking route notice unless PetSmart is explicitly authorized.",
+                                "Keep the message grounded in the observed fact; do not invent extra traffic or timing details.",
+                            ),
+                        ),
+                    )
+            } else {
+                null
+            }
 
         private fun basePlannerPolicy(
             authorization: ScenarioCommandAuthorization,
@@ -446,7 +512,9 @@ class OneHourScenarioFlow {
                     JSONArray(
                         listOf(
                             "For create_task, include participants for the task baseline and for observed currentFactParticipants that belong to the task.",
-                            "For update_task, add newly involved actors via participantsToAdd or provide a complete participants list; do not rely on the UI to infer participants.",
+                            "For update_task, either add newly involved actors via participantsToAdd, or provide participants as the complete current participant list for that task.",
+                            "participants and participantsToAdd must be arrays of objects with id, label, displayName, and role; never use string ids.",
+                            "When providing participants, preserve still-involved participants already shown in currentTask/allTasks; do not drop Driver/PetSmart/Ella just because the latest fact mentions another actor.",
                             "Every requiredParticipants item matching the task must appear in participants or participantsToAdd in the same command.",
                             "When sending SMS to an authorized target, include that target as a participant in the same turn if newly involved.",
                             "knownParticipantsByTask is controlled vocabulary and guidance; do not add every known participant before they are involved.",
@@ -514,6 +582,7 @@ class OneHourScenarioFlow {
         fun commandAuthorizationForEvent(event: SystemRuntimeEvent): ScenarioCommandAuthorization =
             ScenarioCommandAuthorization(
                 taskIds = authorizedTaskIdsForEvent(event),
+                sms = smsAuthorizationsForEvent(event),
                 reminders = when (event.id) {
                     "driver-1320-confirm" -> setOf(
                         ScenarioReminderAuthorization(
@@ -524,6 +593,14 @@ class OneHourScenarioFlow {
                     else -> emptySet()
                 },
             )
+
+        private fun smsAuthorizationsForEvent(event: SystemRuntimeEvent): Set<ScenarioSmsAuthorization> =
+            when (event.id) {
+                "property-parking-notice" -> setOf(
+                    ScenarioSmsAuthorization(PetGroomingTaskSurface.TASK_ID, "Driver"),
+                )
+                else -> emptySet()
+            }
 
         fun commandAuthorizationForUserDecision(taskId: String?): ScenarioCommandAuthorization {
             val cleanTaskId = taskId?.takeIf { it.isNotBlank() }

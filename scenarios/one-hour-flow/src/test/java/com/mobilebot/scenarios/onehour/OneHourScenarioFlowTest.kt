@@ -191,6 +191,10 @@ class OneHourScenarioFlowTest {
             labels(policy.getJSONObject("participantPolicy").getJSONArray("sideEffectTargetParticipants")),
         )
         assertEquals(listOf("PS", "DR"), labels(policy.getJSONArray("requiredParticipants")))
+        val protocol = policy.getJSONObject("petSlotAcceptanceProtocol")
+        assertEquals("13:20", protocol.getString("driverPickupTime"))
+        assertTrue(protocol.getJSONArray("requiredCommandOrder").toString().contains("wait_sms"))
+        assertTrue(protocol.getJSONArray("rules").toString().contains("13:45"))
         assertEquals("可以", policy.getJSONArray("visibleDecisionActions").getJSONObject(0).getString("label"))
     }
 
@@ -223,6 +227,28 @@ class OneHourScenarioFlowTest {
             ),
         )
         assertFalse(policy.toString().contains("司机老陈即将到楼下。"))
+    }
+
+    @Test
+    fun propertyRoutePlannerPolicyAuthorizesDriverSmsProtocol() {
+        val event = sms(
+            id = "property-parking-notice",
+            source = "物业管家",
+            body = "B2 西侧临停区 13:30 后检修，建议司机走东门。",
+        )
+        val policy = JSONObject(OneHourScenarioFlow.plannerPolicyJson(event))
+
+        assertFalse(policy.has("eventId"))
+        assertEquals("pet-grooming-live", policy.getJSONArray("taskIds").getString(0))
+        assertEquals("Driver", policy.getJSONArray("authorizedSms").getJSONObject(0).getString("to"))
+        assertEquals(
+            listOf("PS", "物", "DR"),
+            labels(policy.getJSONArray("requiredParticipants")),
+        )
+        val protocol = policy.getJSONObject("petRouteUpdateProtocol")
+        assertTrue(protocol.getJSONArray("requiredCommandOrder").toString().contains("send_sms to Driver"))
+        assertTrue(protocol.getJSONArray("rules").toString().contains("same turn"))
+        assertFalse(policy.toString().contains("property-parking-notice"))
     }
 
     @Test

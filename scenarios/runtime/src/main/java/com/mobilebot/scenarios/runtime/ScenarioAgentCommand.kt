@@ -212,7 +212,34 @@ object ScenarioCommandCodec {
                     .put("scheduledFor", JSONObject().put("type", "string"))
                     .put("summary", JSONObject().put("type", "string"))
                     .put("finalSummary", JSONObject().put("type", "string"))
+                    .put("participants", participantsSchema())
+                    .put("participantsToAdd", participantsSchema())
+                    .put(
+                        "participantsToRemove",
+                        JSONObject()
+                            .put("type", "array")
+                            .put("items", JSONObject().put("type", "string")),
+                    )
                     .put("decision", decisionSchema()),
+            )
+
+    private fun participantsSchema(): JSONObject =
+        JSONObject()
+            .put("type", "array")
+            .put("items", participantSchema())
+
+    private fun participantSchema(): JSONObject =
+        JSONObject()
+            .put("type", "object")
+            .put("additionalProperties", false)
+            .put("required", JSONArray(listOf("id", "label", "displayName")))
+            .put(
+                "properties",
+                JSONObject()
+                    .put("id", JSONObject().put("type", "string"))
+                    .put("label", JSONObject().put("type", "string"))
+                    .put("displayName", JSONObject().put("type", "string"))
+                    .put("role", JSONObject().put("type", "string")),
             )
 
     private fun decisionSchema(): JSONObject =
@@ -367,15 +394,23 @@ object ScenarioCommandCodec {
     private fun parseLogs(arr: JSONArray?): List<ScenarioLog> =
         items(arr) { ScenarioLog(text = requiredString("text", 0)) }
 
-    private fun parseParticipants(arr: JSONArray?): List<ScenarioParticipant> =
-        items(arr) {
-            ScenarioParticipant(
-                id = requiredString("id", 0),
-                label = requiredString("label", 0),
-                displayName = requiredString("displayName", 0),
-                role = optString("role").ifBlank { "service" },
-            )
+    private fun parseParticipants(arr: JSONArray?): List<ScenarioParticipant> {
+        if (arr == null) return emptyList()
+        return buildList {
+            for (index in 0 until arr.length()) {
+                val obj = arr.optJSONObject(index)
+                    ?: error("participants 第 ${index + 1} 项必须是对象。")
+                add(
+                    ScenarioParticipant(
+                        id = obj.requiredString("id", index),
+                        label = obj.requiredString("label", index),
+                        displayName = obj.requiredString("displayName", index),
+                        role = obj.optString("role").ifBlank { "service" },
+                    ),
+                )
+            }
         }
+    }
 
     private fun parseProgress(obj: JSONObject): ScenarioProgress =
         ScenarioProgress(

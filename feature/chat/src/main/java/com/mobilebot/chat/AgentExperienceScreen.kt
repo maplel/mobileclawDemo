@@ -445,7 +445,12 @@ private fun BlueprintDeck(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
                         text = frame.activeTaskTitle,
                         color = AgentWhite,
@@ -453,6 +458,7 @@ private fun BlueprintDeck(
                         lineHeight = 26.sp,
                         fontWeight = FontWeight.Black,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = "任务蓝图",

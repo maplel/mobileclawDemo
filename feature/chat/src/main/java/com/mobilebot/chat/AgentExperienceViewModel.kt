@@ -1490,7 +1490,7 @@ class AgentExperienceViewModel
             updateTaskState(update.taskId, activate = activate) { task ->
                 val baseParticipants = update.participants
                     ?.map { it.toAgentParticipant() }
-                    ?.let { mergeParticipants(task.participants, it) }
+                    ?.canonicalParticipants()
                     ?: task.participants
                 val withAdded = update.participantsToAdd.fold(baseParticipants) { participants, participant ->
                     participants.withParticipant(participant.toAgentParticipant())
@@ -1569,15 +1569,10 @@ class AgentExperienceViewModel
                 role = role,
             )
 
-        private fun mergeParticipants(
-            existing: List<AgentParticipant>,
-            incoming: List<AgentParticipant>,
-        ): List<AgentParticipant> =
-            (existing + incoming)
-                .fold(emptyList<AgentParticipant>()) { parties, participant ->
-                    parties.withCanonicalParticipant(participant)
-                }
-                .takeLast(MAX_PARTICIPANTS)
+        private fun List<AgentParticipant>.canonicalParticipants(): List<AgentParticipant> =
+            fold(emptyList<AgentParticipant>()) { parties, participant ->
+                parties.withCanonicalParticipant(participant)
+            }.takeLast(MAX_PARTICIPANTS)
 
         private fun List<AgentParticipant>.withCanonicalParticipant(participant: AgentParticipant): List<AgentParticipant> =
             filterNot { it.isEquivalentParticipant(participant) } + participant
@@ -1888,6 +1883,7 @@ class AgentExperienceViewModel
                 appendLine("title: ${task.title}")
                 appendLine("subtitle: ${task.subtitle}")
                 appendLine("status: ${task.status}")
+                appendLine("participants: ${task.participants.toPlannerDigest()}")
                 appendLine("progress: ${task.progressLine.label} ${task.progressLine.detail}")
                 appendLine("latestLogs:")
                 task.taskLogs.takeLast(8).forEach { appendLine("- ${it.timeText} ${it.text}") }
@@ -1904,11 +1900,21 @@ class AgentExperienceViewModel
                     appendLine("title: ${task.title}")
                     appendLine("subtitle: ${task.subtitle}")
                     appendLine("status: ${task.status}")
+                    appendLine("participants: ${task.participants.toPlannerDigest()}")
                     appendLine("progress: ${task.progressLine.label} ${task.progressLine.detail}")
                     task.taskLogs.lastOrNull()?.let { appendLine("latestLog: ${it.timeText} ${it.text}") }
                 }.trim()
             }
         }
+
+        private fun List<AgentParticipant>.toPlannerDigest(): String =
+            if (isEmpty()) {
+                "(none)"
+            } else {
+                joinToString(", ") { participant ->
+                    "${participant.id}/${participant.label}/${participant.displayName}/${participant.role}"
+                }
+            }
 
         private fun recentToolResultsForPlanner(): String =
             taskStates.values
@@ -1970,11 +1976,15 @@ class AgentExperienceViewModel
                     is ScenarioAgentCommand.SendSms -> {
                         sideEffects += { executeScenarioSmsCommand(command, timeText) }
                     }
-                    is ScenarioAgentCommand.WaitSms -> appendCommandLog(
-                        command.taskId,
-                        timeText,
-                        "开始监听 ${command.contact} 的短信：${command.reason}",
-                    )
+                    is ScenarioAgentCommand.WaitSms -> {
+                        sideEffects += {
+                            appendCommandLog(
+                                command.taskId,
+                                timeText,
+                                "开始监听 ${command.contact} 的短信：${command.reason}",
+                            )
+                        }
+                    }
                     is ScenarioAgentCommand.CreateReminder -> {
                         sideEffects += { executeScenarioReminderCommand(command, timeText) }
                     }

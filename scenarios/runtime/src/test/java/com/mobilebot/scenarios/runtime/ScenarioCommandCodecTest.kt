@@ -88,6 +88,36 @@ class ScenarioCommandCodecTest {
     }
 
     @Test
+    fun toolSchemaRequiresStructuredParticipants() {
+        val schema = ScenarioCommandCodec.toolParametersSchema()
+
+        assertTrue(schema.contains("\"participants\""))
+        assertTrue(schema.contains("\"participantsToAdd\""))
+        assertTrue(schema.contains("\"displayName\""))
+    }
+
+    @Test
+    fun rejectsStringParticipants() {
+        val result = ScenarioCommandCodec.parse(
+            """
+            {
+              "commands": [
+                {
+                  "type": "create_task",
+                  "taskId": "task-1",
+                  "title": "Coldchain",
+                  "participants": ["courier-coldchain"]
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        assertFalse(result.isOk)
+        assertTrue(result.error.orEmpty().contains("participants"))
+    }
+
+    @Test
     fun createTaskSummaryHydratesVisibleSurface() {
         val result = ScenarioCommandCodec.parse(
             """
