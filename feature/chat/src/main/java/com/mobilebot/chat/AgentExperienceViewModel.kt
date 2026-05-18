@@ -1706,8 +1706,8 @@ class AgentExperienceViewModel
                         busy = true,
                         statusLabel = "Understanding",
                         progressLine = AgentProgressLine(
-                            label = "解读中",
-                            detail = event.toRuntimeProgressDetail(),
+                            label = event.toRuntimeProgressDetail(),
+                            detail = "解读中",
                             completed = completedStageCount(it),
                             total = totalStageCount(it),
                         ),
