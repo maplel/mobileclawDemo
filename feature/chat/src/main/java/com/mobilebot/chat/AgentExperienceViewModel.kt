@@ -1,4 +1,4 @@
-﻿package com.mobilebot.chat
+package com.mobilebot.chat
 
 import android.os.SystemClock
 import android.util.Log
@@ -32,6 +32,7 @@ import com.mobilebot.scenarios.onehour.OneHourScenarioRunTracker
 import com.mobilebot.scenarios.runtime.ScenarioAgentCommand
 import com.mobilebot.scenarios.runtime.ScenarioAction
 import com.mobilebot.scenarios.runtime.ScenarioConversation
+import com.mobilebot.scenarios.runtime.ScenarioCommandAuthorization
 import com.mobilebot.scenarios.runtime.ScenarioDecision
 import com.mobilebot.scenarios.runtime.ScenarioLog
 import com.mobilebot.scenarios.runtime.ScenarioParticipant
@@ -1168,6 +1169,7 @@ class AgentExperienceViewModel
                 }
             }.getOrNull()
                 ?.takeIf { it.isNotBlank() }
+                ?.takeIf { OneHourScenarioPolicy.isValidEllaRoleCallReply(it, openingTurn) }
                 ?: OneHourScenarioPolicy.fallbackRoleCallReply(
                     openingTurn = openingTurn,
                     userTurns = session.turns.count { it.speaker == VoiceCallSpeaker.USER },
@@ -1841,20 +1843,26 @@ class AgentExperienceViewModel
             }
 
         private fun handleSystemRuntimeEvent(event: SystemRuntimeEvent) {
+            val timeText = blueprintTimeText(event.occurredAt)
+            val localEffects = oneHourFlow.handle(event)
             _frame.update {
                 it.copy(
                     recentSystemEvents = appendSystemEvent(it.recentSystemEvents, event),
                     debugTrace = appendTrace(it.debugTrace, "system event -> ${event.id}"),
                 )
             }
-            applyOneHourFlowEffects(oneHourFlow.systemLayerEffects(event), blueprintTimeText(event.occurredAt))
+            applyOneHourFlowEffects(localEffects, timeText)
             viewModelScope.launch {
-                runScenarioAgentForSystemEvent(event)
+                runScenarioAgentForSystemEvent(event, localEffects)
             }
         }
 
-        private suspend fun runScenarioAgentForSystemEvent(event: SystemRuntimeEvent) {
+        private suspend fun runScenarioAgentForSystemEvent(
+            event: SystemRuntimeEvent,
+            localEffects: List<OneHourFlowEffect>,
+        ) {
             val authorization = OneHourScenarioFlow.commandAuthorizationForEvent(event)
+            if (shouldSkipScenarioPlanner(authorization, localEffects)) return
             val taskId = authorization.taskIds.firstOrNull { taskStates.containsKey(it) }
                 ?: authorization.taskIds.firstOrNull()
                 ?: _frame.value.activeTaskId
@@ -1898,17 +1906,18 @@ class AgentExperienceViewModel
                 )
             }
             if (result?.isOk == true) {
-                if (result.commands.isEmpty() && authorization.taskIds.isNotEmpty()) {
+                val commands = result.commands.withoutLocallyHandledTaskSurfaceCommands(localEffects)
+                if (commands.isEmpty() && authorization.taskIds.isNotEmpty()) {
                     recordScenarioAgentDiagnostic("system ${event.id}", "LLM 未返回命令，未执行本地业务结果。")
                     return
                 }
                 val guardError = ScenarioCommandGuard.validate(
-                    commands = result.commands,
+                    commands = commands,
                     knownTaskIds = taskStates.keys,
                     authorization = authorization,
                 )
                 if (guardError == null) {
-                    applyScenarioAgentCommands(result.commands.withSystemEventLog(event), timeText)
+                    applyScenarioAgentCommands(commands.withSystemEventLog(event), timeText)
                     _frame.update { it.copy(busy = false, activeActionValue = null) }
                 } else {
                     recordScenarioAgentDiagnostic("system ${event.id}", guardError)
@@ -1921,6 +1930,15 @@ class AgentExperienceViewModel
                 }
                 recordScenarioAgentDiagnostic("system ${event.id}", reason)
             }
+        }
+
+        private fun shouldSkipScenarioPlanner(
+            authorization: ScenarioCommandAuthorization,
+            localEffects: List<OneHourFlowEffect>,
+        ): Boolean {
+            if (authorization.taskIds.isEmpty()) return true
+            if (localEffects.isEmpty()) return false
+            return authorization.sms.isEmpty() && authorization.reminders.isEmpty()
         }
 
         private suspend fun runScenarioPlanner(input: ScenarioAgentTurnInput) =
@@ -1989,6 +2007,32 @@ class AgentExperienceViewModel
                     }
                     else -> command
                 }
+            }
+        }
+
+        private fun List<ScenarioAgentCommand>.withoutLocallyHandledTaskSurfaceCommands(
+            localEffects: List<OneHourFlowEffect>,
+        ): List<ScenarioAgentCommand> {
+            val localTaskIds = localEffects.mapNotNull { effect ->
+                when (effect) {
+                    is OneHourFlowEffect.CreateTask -> effect.seed.taskId
+                    is OneHourFlowEffect.UpdateTask -> effect.update.taskId
+                    else -> null
+                }
+            }.toSet()
+            if (localTaskIds.isEmpty()) return this
+            return filterNot { command ->
+                command.taskId in localTaskIds &&
+                    when (command) {
+                        is ScenarioAgentCommand.CreateTask,
+                        is ScenarioAgentCommand.UpdateTask,
+                        is ScenarioAgentCommand.AskUser,
+                        is ScenarioAgentCommand.CompleteTask -> true
+                        is ScenarioAgentCommand.SendSms,
+                        is ScenarioAgentCommand.WaitSms,
+                        is ScenarioAgentCommand.CreateReminder,
+                        is ScenarioAgentCommand.SwitchTask -> false
+                    }
             }
         }
 
@@ -2349,6 +2393,17 @@ class AgentExperienceViewModel
             val authorization = OneHourScenarioFlow.commandAuthorizationForUserDecision(taskId)
             val sessionId = sessionIdForTask(taskId)
             val timeText = blueprintTimeText(scenarioClock)
+            oneHourFlow.userDecisionCommands(
+                taskId = taskId,
+                actionKey = selectedActionValue?.removePrefix(SCRIPTED_ACTION_PREFIX),
+                userText = displayText,
+            )?.let { commands ->
+                applyScenarioAgentCommands(commands, timeText)
+                pendingSelectedActionLabel = null
+                handleDueTimelineEvents()
+                finishScenarioDecisionTurn(selectedActionValue, displayText)
+                return
+            }
             val hasApiKey = settings.getApiKey().isNotBlank()
             val result = if (!hasApiKey) {
                 null

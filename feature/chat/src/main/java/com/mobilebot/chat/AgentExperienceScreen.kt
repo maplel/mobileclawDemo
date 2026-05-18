@@ -112,10 +112,13 @@ fun AgentExperienceScreen(
     }
 
     LaunchedEffect(frame.systemNotification?.id) {
-        val notificationId = frame.systemNotification?.id ?: return@LaunchedEffect
+        val notification = frame.systemNotification ?: return@LaunchedEffect
+        if (notification.callSessionId != null || notification.actionLabel.trim() == "接听") {
+            return@LaunchedEffect
+        }
         // 提醒层无人处理时只关闭浮层，不触发按钮动作。
         delay(SYSTEM_NOTIFICATION_AUTO_DISMISS_MS)
-        viewModel.expireSystemNotification(notificationId)
+        viewModel.expireSystemNotification(notification.id)
     }
 
     ModalNavigationDrawer(
@@ -1442,11 +1445,14 @@ private fun ActiveCallOverlay(
         contentAlignment = Alignment.Center,
     ) {
         Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
         ) {
             Surface(
-                modifier = Modifier.size(96.dp),
+                modifier = Modifier.size(54.dp),
                 color = AgentPanelActive,
                 contentColor = AgentWhite,
                 shape = CircleShape,
@@ -1456,8 +1462,8 @@ private fun ActiveCallOverlay(
                     Text(
                         text = call.caller.take(1),
                         color = AgentWhite,
-                        fontSize = 36.sp,
-                        lineHeight = 40.sp,
+                        fontSize = 24.sp,
+                        lineHeight = 28.sp,
                         fontWeight = FontWeight.Black,
                     )
                 }
@@ -1465,55 +1471,58 @@ private fun ActiveCallOverlay(
             Text(
                 text = call.caller,
                 color = AgentWhite,
-                fontSize = 28.sp,
-                lineHeight = 34.sp,
+                fontSize = 22.sp,
+                lineHeight = 26.sp,
                 fontWeight = FontWeight.Black,
                 textAlign = TextAlign.Center,
             )
             Text(
                 text = call.statusText,
                 color = AgentWhite.copy(alpha = 0.74f),
-                fontSize = 15.sp,
-                lineHeight = 19.sp,
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
             Text(
                 text = "${call.startedTimeText} 接通 · 当前 $currentTimeText",
                 color = AgentMuted,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                fontSize = 11.sp,
+                lineHeight = 13.sp,
                 textAlign = TextAlign.Center,
             )
             Surface(
+                modifier = Modifier.heightIn(max = 112.dp),
                 color = AgentPanel,
                 contentColor = AgentWhite,
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(18.dp),
                 border = BorderStroke(1.dp, AgentWhite.copy(alpha = 0.16f)),
             ) {
                 Column(
                     modifier = Modifier
                         .widthIn(max = 320.dp)
-                        .padding(horizontal = 18.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     if (call.turns.isEmpty()) {
                         Text(
                         text = call.transcriptText,
                             color = AgentWhite.copy(alpha = 0.88f),
-                            fontSize = 14.sp,
-                            lineHeight = 18.sp,
+                            fontSize = 13.sp,
+                            lineHeight = 16.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
                         )
                     } else {
-                        call.turns.takeLast(6).forEach { turn ->
+                        call.turns.takeLast(3).forEach { turn ->
                             Text(
                                 text = "${turn.speaker}：${turn.text}",
                                 color = AgentWhite.copy(alpha = 0.88f),
-                                fontSize = 14.sp,
-                                lineHeight = 18.sp,
+                                fontSize = 13.sp,
+                                lineHeight = 16.sp,
                                 fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
@@ -1540,10 +1549,12 @@ private fun ActiveCallOverlay(
                         }
                     },
                 ),
-                modifier = Modifier.widthIn(min = 260.dp, max = 340.dp),
+                modifier = Modifier
+                    .height(54.dp)
+                    .widthIn(min = 260.dp, max = 340.dp),
             )
             Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CallControlChip(
@@ -1563,7 +1574,7 @@ private fun ActiveCallOverlay(
                 )
             }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CallControlChip("静音", enabled = false)
@@ -1583,7 +1594,7 @@ private fun CallControlChip(
     Surface(
         modifier = Modifier
             .width(72.dp)
-            .height(44.dp)
+            .height(40.dp)
             .clickable(enabled = enabled, onClick = onClick),
         color = if (enabled) AgentPanel else AgentPanel.copy(alpha = 0.62f),
         contentColor = AgentWhite,

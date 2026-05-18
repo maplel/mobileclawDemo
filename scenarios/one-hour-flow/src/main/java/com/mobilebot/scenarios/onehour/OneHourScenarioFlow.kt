@@ -117,6 +117,27 @@ class OneHourScenarioFlow {
         return listOf(ScenarioAgentCommand.UpdateTask(PetGroomingTaskSurface.keepOriginalSlot(label)))
     }
 
+    fun userDecisionCommands(
+        taskId: String?,
+        actionKey: String?,
+        userText: String,
+    ): List<ScenarioAgentCommand>? {
+        if (taskId != PetGroomingTaskSurface.TASK_ID) return null
+        val cleanText = userText.trim()
+        val cleanAction = actionKey?.trim().orEmpty()
+        return when {
+            cleanAction == PetGroomingTaskSurface.ACTION_ACCEPT_14 ||
+                cleanText in setOf("可以", "同意", "改到 14:00", "改到14:00") ->
+                acceptPetCareSlotCommands(cleanText.ifBlank { "可以" })
+
+            cleanAction == PetGroomingTaskSurface.ACTION_KEEP_17 ||
+                cleanText in setOf("不改了", "不改", "保留原来", "保留 17:00", "保留17:00") ->
+                keepOriginalPetCareSlotCommands(cleanText.ifBlank { "不改了" })
+
+            else -> null
+        }
+    }
+
     fun openSlotClarificationCommands(userText: String): List<ScenarioAgentCommand> {
         val (conversations, decision) = PetGroomingTaskSurface.openSlotClarification(userText)
         val update = ScenarioTaskUpdate(
@@ -577,8 +598,15 @@ class OneHourScenarioFlow {
 
         private fun currentObservedContext(event: SystemRuntimeEvent): String? =
             when (event) {
-                is CallEndedEvent -> FamilyShoppingTaskSurface.transcriptForAudioRef(event.audioRef)
-                    ?.let { "Call transcript from ${event.contact}: ${it.transcript}" }
+                is CallEndedEvent -> (
+                    FamilyShoppingTaskSurface.transcriptForAudioRef(event.audioRef)
+                        ?: event.callSessionId?.let(FamilyShoppingTaskSurface::transcriptForIncomingCall)
+                        ?: if (event.contact.equals("Ella", ignoreCase = true)) {
+                            FamilyShoppingTaskSurface.transcriptForIncomingCall("ella-call")
+                        } else {
+                            null
+                        }
+                    )?.let { "Call transcript from ${event.contact}: ${it.transcript}" }
                 else -> null
             }
 

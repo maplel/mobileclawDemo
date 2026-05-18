@@ -133,6 +133,24 @@ class OneHourScenarioFlowTest {
     }
 
     @Test
+    fun localUserDecisionCommandsAcceptPetSlotWithoutPlannerRewrite() {
+        val flow = OneHourScenarioFlow()
+        val commands = flow.userDecisionCommands(
+            taskId = "pet-grooming-live",
+            actionKey = "pet.accept_14",
+            userText = "可以",
+        ) ?: error("Expected local decision commands")
+        val update = commands.first() as ScenarioAgentCommand.UpdateTask
+
+        assertTrue(flow.isPetCareAccepted())
+        assertEquals(null, update.update.decision)
+        assertTrue(update.update.conversations.any { it.text.contains("联系了司机老陈") })
+        assertTrue(commands.any { it is ScenarioAgentCommand.SendSms && it.to == "PetSmart" })
+        assertTrue(commands.any { it is ScenarioAgentCommand.SendSms && it.to == "Driver" })
+        assertTrue(commands.any { it is ScenarioAgentCommand.WaitSms && it.contact == "Driver" })
+    }
+
+    @Test
     fun driverConfirmationReferenceCommandsIncludeReminderCreation() {
         val flow = OneHourScenarioFlow()
         flow.acceptPetCareSlot("可以")
@@ -299,6 +317,40 @@ class OneHourScenarioFlowTest {
         assertTrue(policy.getString("currentObservedContext").contains("低脂牛奶"))
         assertTrue(policy.getString("currentObservedContext").contains("常用洗衣液"))
         assertFalse(policy.toString().contains("ella-call-ended"))
+    }
+
+    @Test
+    fun runtimeCallEndedPlannerPolicyUsesEllaShoppingContext() {
+        val event = CallEndedEvent(
+            id = "ella-call-ended",
+            occurredAt = now.withHour(13).withMinute(11),
+            source = "Ella",
+            title = "Ella 通话结束",
+            body = "通话结束，音频可用于提取家庭采购待办。",
+            contact = "Ella",
+            audioRef = "runtime-call:ella-call",
+            callSessionId = "ella-call",
+        )
+        val policy = JSONObject(OneHourScenarioFlow.plannerPolicyJson(event))
+
+        assertTrue(policy.getString("currentObservedContext").contains("低脂牛奶"))
+        assertTrue(policy.getString("currentObservedContext").contains("常用洗衣液"))
+    }
+
+    @Test
+    fun ellaRoleCallReplyRejectsOffTopicOpening() {
+        assertFalse(
+            OneHourScenarioPolicy.isValidEllaRoleCallReply(
+                "嗨，最近怎么样？有空一起吃饭吗？",
+                openingTurn = true,
+            ),
+        )
+        assertTrue(
+            OneHourScenarioPolicy.isValidEllaRoleCallReply(
+                "喂，下午能帮家里买点低脂牛奶吗？",
+                openingTurn = true,
+            ),
+        )
     }
 
     @Test
