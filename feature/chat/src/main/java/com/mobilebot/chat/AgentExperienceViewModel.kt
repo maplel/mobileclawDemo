@@ -1704,10 +1704,12 @@ class AgentExperienceViewModel
                 _frame.update {
                     it.copy(
                         busy = true,
-                        statusLabel = "Thinking",
-                        progressLine = it.progressLine.copy(
-                            label = "Thinking",
-                            detail = event.title,
+                        statusLabel = "Understanding",
+                        progressLine = AgentProgressLine(
+                            label = "解读中",
+                            detail = event.toRuntimeProgressDetail(),
+                            completed = completedStageCount(it),
+                            total = totalStageCount(it),
                         ),
                     )
                 }
@@ -1865,6 +1867,21 @@ class AgentExperienceViewModel
                 is EmailSentEvent -> "已发送邮件给 ${to}：$detail"
                 is WebQueryResultEvent -> "网页查询结果：$detail"
                 else -> "收到 $sourceText 通知：$detail"
+            }
+        }
+
+        private fun SystemRuntimeEvent.toRuntimeProgressDetail(): String {
+            val sourceText = source.ifBlank { "系统" }
+            return when (this) {
+                is IncomingSmsEvent -> "收到 $sourceText 短信"
+                is IncomingCallEvent -> "收到 $sourceText 来电"
+                is CallEndedEvent -> "$sourceText 通话结束"
+                is ReminderFiredEvent -> "触发提醒"
+                is AlarmFiredEvent -> "触发闹钟"
+                is IncomingEmailEvent -> "收到 $sourceText 邮件"
+                is EmailSentEvent -> "已发送邮件给 ${to}"
+                is WebQueryResultEvent -> "收到网页查询结果"
+                else -> "收到 $sourceText 通知"
             }
         }
 

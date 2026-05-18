@@ -1030,8 +1030,8 @@ private fun TaskProgressStrip(
     modifier: Modifier = Modifier,
 ) {
     val progress = frame.progressLine
-    val label = progressLabelText(progress.label)
-    val detail = progressDetailText(progress.detail)
+    val label = displayProgressLabel(frame)
+    val detail = displayProgressDetail(frame)
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -1067,6 +1067,24 @@ private fun TaskProgressStrip(
                 onClick = onOpenBlueprint,
             )
         }
+    }
+}
+
+private fun displayProgressLabel(frame: AgentExperienceFrame): String {
+    if (frame.error != null) return progressLabelText(frame.progressLine.label)
+    if (frame.busy) return progressLabelText(frame.progressLine.label)
+    return "待机中"
+}
+
+private fun displayProgressDetail(frame: AgentExperienceFrame): String {
+    if (frame.error != null) return progressDetailText(frame.progressLine.detail)
+    if (frame.busy) return progressDetailText(frame.progressLine.detail)
+    return when {
+        frame.decisionPrompt != null -> "等待用户输入"
+        frame.activeCall != null -> "通话中"
+        frame.systemNotification != null -> "等待处理系统提示"
+        frame.finalSummary != null -> progressDetailText(frame.progressLine.detail)
+        else -> ""
     }
 }
 
