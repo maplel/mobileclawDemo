@@ -152,6 +152,8 @@ fun AgentExperienceScreen(
                 onAction = viewModel::chooseDecision,
                 onSubmitText = viewModel::submitDecisionText,
                 onDismissNotification = viewModel::dismissSystemNotification,
+                onSubmitCallText = viewModel::submitCallUserTurn,
+                onHangUpCall = viewModel::hangUpActiveCall,
             )
         }
     }
@@ -172,6 +174,8 @@ private fun PhoneFlowCanvas(
     onAction: (ActionButton) -> Unit,
     onSubmitText: (String) -> Unit,
     onDismissNotification: () -> Unit,
+    onSubmitCallText: (String) -> Unit,
+    onHangUpCall: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -225,6 +229,8 @@ private fun PhoneFlowCanvas(
                     ActiveCallOverlay(
                         call = activeCall,
                         currentTimeText = frame.clockTimeText,
+                        onSubmitTurn = onSubmitCallText,
+                        onHangUp = onHangUpCall,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -1415,8 +1421,11 @@ private fun SystemNotificationOverlay(
 private fun ActiveCallOverlay(
     call: AgentActiveCall,
     currentTimeText: String,
+    onSubmitTurn: (String) -> Unit,
+    onHangUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var callInput by rememberSaveable(call.id) { mutableStateOf("") }
     val pulse by rememberInfiniteTransition(label = "call_pulse").animateFloat(
         initialValue = 0.42f,
         targetValue = 1f,
@@ -1482,42 +1491,108 @@ private fun ActiveCallOverlay(
                 shape = RoundedCornerShape(22.dp),
                 border = BorderStroke(1.dp, AgentWhite.copy(alpha = 0.16f)),
             ) {
-                Text(
-                    text = call.transcriptText,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp),
-                    color = AgentWhite.copy(alpha = 0.88f),
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 320.dp)
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (call.turns.isEmpty()) {
+                        Text(
+                        text = call.transcriptText,
+                            color = AgentWhite.copy(alpha = 0.88f),
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                    } else {
+                        call.turns.takeLast(6).forEach { turn ->
+                            Text(
+                                text = "${turn.speaker}：${turn.text}",
+                                color = AgentWhite.copy(alpha = 0.88f),
+                                fontSize = 14.sp,
+                                lineHeight = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = callInput,
+                onValueChange = { callInput = it },
+                enabled = call.inputEnabled,
+                placeholder = {
+                    Text(
+                        text = if (call.inputEnabled) "输入你这一轮要说的话" else "等待对方回应",
+                        color = AgentMuted,
+                    )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        val text = callInput.trim()
+                        if (text.isNotEmpty() && call.inputEnabled) {
+                            onSubmitTurn(text)
+                            callInput = ""
+                        }
+                    },
+                ),
+                modifier = Modifier.widthIn(min = 260.dp, max = 340.dp),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CallControlChip(
+                    text = "说完了",
+                    enabled = call.inputEnabled && callInput.trim().isNotEmpty(),
+                    onClick = {
+                        val text = callInput.trim()
+                        if (text.isNotEmpty()) {
+                            onSubmitTurn(text)
+                            callInput = ""
+                        }
+                    },
+                )
+                CallControlChip(
+                    text = "挂断",
+                    onClick = onHangUp,
                 )
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CallControlChip("静音")
-                CallControlChip("转写")
-                CallControlChip("免提")
+                CallControlChip("静音", enabled = false)
+                CallControlChip("转写", enabled = false)
+                CallControlChip("免提", enabled = false)
             }
         }
     }
 }
 
 @Composable
-private fun CallControlChip(text: String) {
+private fun CallControlChip(
+    text: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit = {},
+) {
     Surface(
         modifier = Modifier
             .width(72.dp)
-            .height(44.dp),
-        color = AgentPanel,
+            .height(44.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        color = if (enabled) AgentPanel else AgentPanel.copy(alpha = 0.62f),
         contentColor = AgentWhite,
         shape = RoundedCornerShape(22.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = text,
-                color = AgentWhite.copy(alpha = 0.78f),
+                color = AgentWhite.copy(alpha = if (enabled) 0.86f else 0.42f),
                 fontSize = 12.sp,
                 lineHeight = 15.sp,
                 fontWeight = FontWeight.Bold,

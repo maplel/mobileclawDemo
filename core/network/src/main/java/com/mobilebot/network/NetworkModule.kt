@@ -12,4 +12,8 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideLlmClient(impl: OpenAiCompatibleClient): LlmClient = impl
+
+    @Provides
+    @Singleton
+    fun provideRoleCallModel(impl: QwenRoleCallModel): RoleCallModel = impl
 }

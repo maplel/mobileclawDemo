@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":core:bridge"))
     implementation(project(":core:domain"))
     implementation(project(":core:network"))
+    implementation(project(":core:systemruntime"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.lifecycle.process)
     implementation(libs.kotlinx.coroutines.android)

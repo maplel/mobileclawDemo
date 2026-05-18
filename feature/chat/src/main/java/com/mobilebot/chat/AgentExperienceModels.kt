@@ -99,6 +99,13 @@ data class AgentSystemNotification(
     val body: String,
     val actionLabel: String = "OK",
     val callTranscriptText: String? = null,
+    val callSessionId: String? = null,
+    val personaId: String? = null,
+)
+
+data class AgentCallTurn(
+    val speaker: String,
+    val text: String,
 )
 
 data class AgentActiveCall(
@@ -107,6 +114,9 @@ data class AgentActiveCall(
     val startedTimeText: String,
     val statusText: String,
     val transcriptText: String,
+    val personaId: String = caller.lowercase(),
+    val turns: List<AgentCallTurn> = emptyList(),
+    val inputEnabled: Boolean = true,
 )
 
 data class AgentProgressLine(

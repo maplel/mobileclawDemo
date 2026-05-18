@@ -420,8 +420,9 @@ class OneHourScenarioFlowTest {
         )
 
         assertEquals("接听", callLayer.actionLabel)
-        assertTrue(callLayer.callTranscriptText.orEmpty().contains("低脂牛奶"))
-        assertTrue(callLayer.callTranscriptText.orEmpty().contains("常用洗衣液"))
+        assertEquals("ella-call", callLayer.callSessionId)
+        assertEquals("ella", callLayer.personaId)
+        assertTrue(callLayer.callTranscriptText.isNullOrBlank())
         assertTrue(endedEffects.any { it is OneHourFlowEffect.ClearActiveCall })
         assertTrue(endedEffects.any { it is OneHourFlowEffect.ClearSystemLayer })
         val familyTask = endedEffects.single { it is OneHourFlowEffect.CreateTask } as OneHourFlowEffect.CreateTask

@@ -8,6 +8,7 @@ import com.mobilebot.bus.MessageBus
 import com.mobilebot.data.settings.UserSettingsRepository
 import com.mobilebot.domain.AgentLoop
 import com.mobilebot.domain.ForegroundController
+import com.mobilebot.domain.LlmConfigurator
 import com.mobilebot.domain.agent.AgentDecisionAction
 import com.mobilebot.domain.agent.AgentSessionInput
 import com.mobilebot.domain.agent.AgentSessionRoute
@@ -21,6 +22,9 @@ import com.mobilebot.domain.interaction.ActionPromptCodec
 import com.mobilebot.domain.repository.MemoryFileRepository
 import com.mobilebot.domain.todo.TodoListCodec
 import com.mobilebot.domain.tools.ToolRegistry
+import com.mobilebot.network.RoleCallModel
+import com.mobilebot.network.RoleCallRequest
+import com.mobilebot.network.RoleCallTurn
 import com.mobilebot.scenarios.onehour.OneHourFlowEffect
 import com.mobilebot.scenarios.onehour.OneHourScenarioPolicy
 import com.mobilebot.scenarios.onehour.OneHourScenarioFlow
@@ -46,6 +50,9 @@ import com.mobilebot.systemruntime.IncomingSmsEvent
 import com.mobilebot.systemruntime.ReminderFiredEvent
 import com.mobilebot.systemruntime.SystemRuntime
 import com.mobilebot.systemruntime.SystemRuntimeEvent
+import com.mobilebot.systemruntime.VoiceCallSession
+import com.mobilebot.systemruntime.VoiceCallSessionRuntime
+import com.mobilebot.systemruntime.VoiceCallSpeaker
 import com.mobilebot.systemruntime.WebQueryResultEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -74,8 +81,11 @@ class AgentExperienceViewModel
         private val agent: AgentLoop,
         private val settings: UserSettingsRepository,
         private val foreground: ForegroundController,
+        private val llmConfigurator: LlmConfigurator,
         private val decisionIntentNormalizer: AgentDecisionIntentNormalizer,
         private val systemRuntime: SystemRuntime,
+        private val voiceCallSessionRuntime: VoiceCallSessionRuntime,
+        private val roleCallModel: RoleCallModel,
         private val scenarioAgentTurnRunner: ScenarioAgentTurnRunner,
         private val toolRegistry: ToolRegistry,
         private val memoryFiles: MemoryFileRepository,
@@ -1029,18 +1039,27 @@ class AgentExperienceViewModel
         }
 
         fun dismissSystemNotification() {
-            var shouldAutoAdvanceActiveCall = false
+            var callSessionId: String? = null
             _frame.update { frame ->
                 val notification = frame.systemNotification
                 val call = if (notification != null && notification.actionLabel.trim() == "接听") {
-                    // 接听后短暂展示通话态，再自动推进到系统通话结束事件。
-                    shouldAutoAdvanceActiveCall = true
+                    val sessionId = notification.callSessionId ?: notification.id
+                    callSessionId = sessionId
+                    val caller = notification.title.removeSuffix(" 来电")
+                    val session = voiceCallSessionRuntime.startSession(
+                        sessionId = sessionId,
+                        contact = caller,
+                        personaId = notification.personaId ?: caller.lowercase(Locale.US),
+                    )
                     AgentActiveCall(
-                        id = notification.id,
-                        caller = notification.title.removeSuffix(" 来电"),
+                        id = session.id,
+                        caller = session.contact,
                         startedTimeText = notification.timeText,
-                        statusText = "正在通话",
-                        transcriptText = notification.callTranscriptText ?: "通话转写中",
+                        statusText = "来电接入中",
+                        transcriptText = "通话已接通，等待对方开口。",
+                        personaId = session.personaId,
+                        turns = emptyList(),
+                        inputEnabled = false,
                     )
                 } else {
                     frame.activeCall
@@ -1050,15 +1069,156 @@ class AgentExperienceViewModel
                     activeCall = call,
                 )
             }
-            if (shouldAutoAdvanceActiveCall) {
+            callSessionId?.let { sessionId ->
                 viewModelScope.launch {
-                    delay(CALL_CONNECTED_DISPLAY_MS)
-                    if (_frame.value.activeCall != null) {
-                        accelerateClockUntilNextEvent(allowWhilePaused = true)
-                    }
+                    generateRoleCallOpeningTurn(sessionId)
                 }
             }
         }
+
+        fun submitCallUserTurn(text: String) {
+            val cleanText = text.trim()
+            val call = _frame.value.activeCall ?: return
+            if (cleanText.isBlank() || !call.inputEnabled) return
+            val session = voiceCallSessionRuntime.appendTurn(call.id, VoiceCallSpeaker.USER, cleanText) ?: return
+            _frame.updateActiveCall(session, "对方思考中", inputEnabled = false)
+            viewModelScope.launch {
+                val reply = generateRoleCallReply(session, cleanText, openingTurn = false)
+                val updated = voiceCallSessionRuntime.appendTurn(call.id, VoiceCallSpeaker.AGENT, reply)
+                    ?: voiceCallSessionRuntime.currentSession(call.id)
+                    ?: return@launch
+                _frame.updateActiveCall(updated, "等待你回应", inputEnabled = true)
+            }
+        }
+
+        fun hangUpActiveCall() {
+            val call = _frame.value.activeCall ?: return
+            val transcript = voiceCallSessionRuntime.finishSession(call.id)
+            _frame.update { frame ->
+                frame.copy(
+                    activeCall = null,
+                    progressLine = frame.progressLine.copy(
+                        label = "${call.caller} 通话结束",
+                        detail = "整理通话转写",
+                    ),
+                )
+            }
+            val eventId = callEndedEventId(call.id)
+            systemRuntime.markScenarioEventDelivered(ONE_HOUR_SCENARIO_ID, eventId)
+            viewModelScope.launch {
+                systemRuntime.publishEvent(
+                    CallEndedEvent(
+                        id = eventId,
+                        occurredAt = scenarioClock,
+                        source = call.caller,
+                        title = "${call.caller} 通话结束",
+                        body = "通话结束，音频可用于提取家庭采购待办。",
+                        contact = call.caller,
+                        audioRef = transcript?.audioRef ?: VoiceCallSession.runtimeAudioRef(call.id),
+                        callSessionId = call.id,
+                    ),
+                )
+            }
+        }
+
+        private suspend fun generateRoleCallOpeningTurn(sessionId: String) {
+            val session = voiceCallSessionRuntime.currentSession(sessionId) ?: return
+            val reply = generateRoleCallReply(session, latestUserText = "", openingTurn = true)
+            val updated = voiceCallSessionRuntime.appendTurn(sessionId, VoiceCallSpeaker.AGENT, reply)
+                ?: voiceCallSessionRuntime.currentSession(sessionId)
+                ?: return
+            _frame.updateActiveCall(updated, "等待你回应", inputEnabled = true)
+        }
+
+        private suspend fun generateRoleCallReply(
+            session: VoiceCallSession,
+            latestUserText: String,
+            openingTurn: Boolean,
+        ): String {
+            val hasApiKey = settings.getApiKey().isNotBlank()
+            if (!hasApiKey) {
+                return OneHourScenarioPolicy.fallbackRoleCallReply(
+                    openingTurn = openingTurn,
+                    userTurns = session.turns.count { it.speaker == VoiceCallSpeaker.USER },
+                )
+            }
+            return runCatching {
+                llmConfigurator.beforeRequest()
+                withContext(Dispatchers.IO) {
+                    withTimeoutOrNull(CALL_ROLE_MODEL_TIMEOUT_MS) {
+                        roleCallModel.nextReply(
+                            RoleCallRequest(
+                                personaId = session.personaId,
+                                personaInstruction = OneHourScenarioPolicy.ellaRoleCallInstruction(),
+                                contactName = session.contact,
+                                transcript = session.turns.map {
+                                    RoleCallTurn(
+                                        speaker = when (it.speaker) {
+                                            VoiceCallSpeaker.USER -> "用户"
+                                            VoiceCallSpeaker.AGENT -> session.contact
+                                        },
+                                        text = it.text,
+                                    )
+                                },
+                                latestUserText = latestUserText,
+                                openingTurn = openingTurn,
+                            ),
+                        ).text
+                    }
+                }
+            }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: OneHourScenarioPolicy.fallbackRoleCallReply(
+                    openingTurn = openingTurn,
+                    userTurns = session.turns.count { it.speaker == VoiceCallSpeaker.USER },
+                )
+        }
+
+        private fun MutableStateFlow<AgentExperienceFrame>.updateActiveCall(
+            session: VoiceCallSession,
+            statusText: String,
+            inputEnabled: Boolean,
+        ) {
+            update { frame ->
+                val current = frame.activeCall
+                if (current == null || current.id != session.id) {
+                    frame
+                } else {
+                    frame.copy(
+                        activeCall = current.copy(
+                            statusText = statusText,
+                            transcriptText = session.toDisplayTranscript(),
+                            turns = session.turns.map {
+                                AgentCallTurn(
+                                    speaker = when (it.speaker) {
+                                        VoiceCallSpeaker.USER -> "你"
+                                        VoiceCallSpeaker.AGENT -> session.contact
+                                    },
+                                    text = it.text,
+                                )
+                            },
+                            inputEnabled = inputEnabled,
+                        ),
+                    )
+                }
+            }
+        }
+
+        private fun VoiceCallSession.toDisplayTranscript(): String =
+            turns.joinToString("\n") { turn ->
+                val speaker = when (turn.speaker) {
+                    VoiceCallSpeaker.USER -> "你"
+                    VoiceCallSpeaker.AGENT -> contact
+                }
+                "$speaker：${turn.text}"
+            }.ifBlank { "通话已接通，等待对话开始。" }
+
+        private fun callEndedEventId(sessionId: String): String =
+            if (sessionId.endsWith("-call")) {
+                "$sessionId-ended"
+            } else {
+                "$sessionId-ended"
+            }
 
         fun expireSystemNotification(notificationId: String) {
             _frame.update { frame ->
@@ -1673,10 +1833,11 @@ class AgentExperienceViewModel
                 _frame.value.activeCall != null
 
         private fun heldRuntimeEventIds(): Set<String> =
-            if (oneHourFlow.isPetCareAccepted()) {
-                emptySet()
-            } else {
-                OneHourScenarioFlow.petAcceptanceRequiredEventIds
+            buildSet {
+                add("ella-call-ended")
+                if (!oneHourFlow.isPetCareAccepted()) {
+                    addAll(OneHourScenarioFlow.petAcceptanceRequiredEventIds)
+                }
             }
 
         private fun handleSystemRuntimeEvent(event: SystemRuntimeEvent) {
@@ -1793,6 +1954,18 @@ class AgentExperienceViewModel
                 appendLine("source: $source")
                 appendLine("title: $title")
                 appendLine("body: $body")
+                when (val event = this@toAgentFact) {
+                    is IncomingCallEvent -> {
+                        appendLine("contact: ${event.contact}")
+                        event.callSessionId?.let { appendLine("callSessionId: $it") }
+                    }
+                    is CallEndedEvent -> {
+                        appendLine("contact: ${event.contact}")
+                        appendLine("audioRef: ${event.audioRef}")
+                        event.callSessionId?.let { appendLine("callSessionId: $it") }
+                    }
+                    else -> Unit
+                }
             }
 
         private fun List<ScenarioAgentCommand>.withSystemEventLog(event: SystemRuntimeEvent): List<ScenarioAgentCommand> {
@@ -2292,6 +2465,8 @@ class AgentExperienceViewModel
                         body = effect.body,
                         actionLabel = effect.actionLabel,
                         callTranscriptText = effect.callTranscriptText,
+                        callSessionId = effect.callSessionId,
+                        personaId = effect.personaId,
                     ),
                 )
             }
@@ -2678,8 +2853,8 @@ class AgentExperienceViewModel
             private const val AUTO_TRIGGER_DELAY_MS = 5_000L
             private const val SCENARIO_CLOCK_TICK_MS = 60_000L
             private const val SCENARIO_PLANNER_TIMEOUT_MS = 45_000L
+            private const val CALL_ROLE_MODEL_TIMEOUT_MS = 20_000L
             private const val CLOCK_LOOP_INTERVAL_MS = 1_000L
-            private const val CALL_CONNECTED_DISPLAY_MS = 6_000L
             private const val CLOCK_ADVANCE_STEPS = 30
             private const val CLOCK_ADVANCE_STEP_MS = 1_000L
             private const val TOOL_ROUND_LIMIT_PREFIX = "Stopped: too many tool call rounds"

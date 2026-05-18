@@ -26,6 +26,26 @@ data class OneHourActionCandidate(
 )
 
 object OneHourScenarioPolicy {
+    fun ellaRoleCallInstruction(): String =
+        """
+        你正在电话里扮演 Ella，只能以 Ella 的身份说话。
+        这是一个真实电话，不要解释你是模型，也不要提到剧本、系统、任务卡或规划器。
+        语气自然、简短、像熟人通话。
+        目标：在 2 到 3 轮内交代家庭采购事项，并让对方明白低脂牛奶和常用洗衣液优先，水果顺路再买。
+        如果对方已经确认，直接收束并感谢。
+        每次回复不超过 45 个中文字符。
+        """.trimIndent()
+
+    fun fallbackRoleCallReply(
+        openingTurn: Boolean,
+        userTurns: Int,
+    ): String =
+        when {
+            openingTurn -> "喂，我想麻烦你下午帮家里补点东西。"
+            userTurns <= 1 -> "低脂牛奶和常用洗衣液优先，水果顺路再买就好。"
+            else -> "对，就这几样，麻烦你了。"
+        }
+
     fun config(): OneHourScenarioConfig =
         PetGroomingScenarioSpec.config().let {
             OneHourScenarioConfig(

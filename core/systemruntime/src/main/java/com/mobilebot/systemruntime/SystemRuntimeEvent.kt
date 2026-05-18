@@ -37,6 +37,8 @@ data class IncomingCallEvent(
     override val title: String,
     override val body: String,
     val contact: String,
+    val callSessionId: String? = null,
+    val personaId: String? = null,
 ) : SystemRuntimeEvent
 
 data class CallEndedEvent(
@@ -47,6 +49,7 @@ data class CallEndedEvent(
     override val body: String,
     val contact: String,
     val audioRef: String,
+    val callSessionId: String? = null,
 ) : SystemRuntimeEvent
 
 data class ReminderFiredEvent(

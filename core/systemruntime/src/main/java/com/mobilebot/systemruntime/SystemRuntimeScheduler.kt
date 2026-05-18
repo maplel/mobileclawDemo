@@ -63,6 +63,14 @@ class SystemRuntimeScheduler {
             .minByOrNull { it.triggerAt }
 
     @Synchronized
+    fun markDelivered(
+        scenarioId: String,
+        eventId: String,
+    ) {
+        delivered += "$scenarioId:$eventId"
+    }
+
+    @Synchronized
     fun clearScenario(scenarioId: String) {
         scheduled.keys
             .filter { it.startsWith("$scenarioId:") }

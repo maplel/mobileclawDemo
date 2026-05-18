@@ -125,6 +125,13 @@ class SystemRuntime
         ): SystemRuntimeScheduledEvent? =
             scheduler.nextEvent(scenarioId, now, heldEventIds)
 
+        fun markScenarioEventDelivered(
+            scenarioId: String,
+            eventId: String,
+        ) {
+            scheduler.markDelivered(scenarioId, eventId)
+        }
+
         fun clearScenarioSchedule(scenarioId: String) {
             scheduler.clearScenario(scenarioId)
         }
@@ -1379,6 +1386,8 @@ class SystemRuntime
                     title = title,
                     body = body,
                     contact = source,
+                    callSessionId = id,
+                    personaId = source.lowercase(Locale.US),
                 )
                 "call_ended" -> CallEndedEvent(
                     id = id,
@@ -1388,6 +1397,7 @@ class SystemRuntime
                     body = body,
                     contact = source,
                     audioRef = id,
+                    callSessionId = id.removeSuffix("-ended"),
                 )
                 "reminder_fired" -> ReminderFiredEvent(
                     id = id,

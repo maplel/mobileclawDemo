@@ -40,6 +40,8 @@ sealed interface OneHourFlowEffect {
         val body: String,
         val actionLabel: String,
         val callTranscriptText: String? = null,
+        val callSessionId: String? = null,
+        val personaId: String? = null,
     ) : OneHourFlowEffect
 
     data class ClearSystemLayer(
@@ -201,7 +203,8 @@ class OneHourScenarioFlow {
                 title = "${event.source} 来电",
                 body = "正在接入通话转写。",
                 actionLabel = "接听",
-                callTranscriptText = FamilyShoppingTaskSurface.transcriptForIncomingCall(event.id)?.transcript,
+                callSessionId = event.callSessionId ?: event.id,
+                personaId = event.personaId ?: event.source.lowercase(),
             ),
         )
 

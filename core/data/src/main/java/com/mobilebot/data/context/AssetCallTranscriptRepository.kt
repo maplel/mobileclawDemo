@@ -4,6 +4,7 @@ import android.content.Context
 import com.mobilebot.domain.tools.CallTranscript
 import com.mobilebot.domain.tools.CallTranscriptRepository
 import com.mobilebot.domain.tools.CallTranscriptTask
+import com.mobilebot.systemruntime.VoiceCallSessionRuntime
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,6 +16,7 @@ class AssetCallTranscriptRepository
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
+        private val voiceCallSessionRuntime: VoiceCallSessionRuntime,
     ) : CallTranscriptRepository {
         private val transcripts: List<CallTranscript> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
             loadTranscripts()
@@ -27,6 +29,7 @@ class AssetCallTranscriptRepository
             val ref = audioRef.trim()
             if (ref.isBlank()) return null
             val normalizedContact = contact.trim()
+            voiceCallSessionRuntime.findTranscript(ref, normalizedContact)?.let { return it }
             return transcripts.firstOrNull {
                 it.audioRef == ref &&
                     (normalizedContact.isBlank() || it.contact.equals(normalizedContact, ignoreCase = true))

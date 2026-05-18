@@ -70,6 +70,21 @@ class SystemRuntimeSchedulerTest {
         assertEquals("open", next?.event?.id)
     }
 
+    @Test
+    fun markDeliveredPreventsScheduledDuplicateAfterManualPublish() {
+        val scheduler = SystemRuntimeScheduler()
+        val triggerAt = LocalDateTime.of(2027, 4, 25, 13, 11)
+        scheduler.replaceScenarioEvents(
+            "one_hour_aio",
+            listOf(scheduled("one_hour_aio", "ella-call-ended", triggerAt)),
+        )
+
+        scheduler.markDelivered("one_hour_aio", "ella-call-ended")
+        val due = scheduler.dueEvents("one_hour_aio", triggerAt.plusMinutes(1))
+
+        assertEquals(emptyList<SystemRuntimeEvent>(), due)
+    }
+
     private fun scheduled(
         scenarioId: String,
         id: String,
