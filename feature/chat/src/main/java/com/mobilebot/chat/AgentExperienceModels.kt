@@ -11,6 +11,7 @@ data class AgentSystemEvent(
     val id: String,
     val timeText: String,
     val source: String,
+    val eventTypeText: String = "通知",
     val title: String,
     val body: String,
 )

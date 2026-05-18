@@ -2411,10 +2411,24 @@ class AgentExperienceViewModel
                     id = event.id,
                     timeText = blueprintTimeText(event.occurredAt),
                     source = event.source,
+                    eventTypeText = event.toDisplayEventTypeText(),
                     title = event.title,
                     body = event.body,
                 )
             ).takeLast(MAX_SYSTEM_EVENTS)
+
+        private fun SystemRuntimeEvent.toDisplayEventTypeText(): String =
+            when (this) {
+                is IncomingSmsEvent -> "短信"
+                is IncomingCallEvent -> "来电"
+                is CallEndedEvent -> "通话"
+                is ReminderFiredEvent -> "提醒"
+                is AlarmFiredEvent -> "闹钟"
+                is IncomingEmailEvent -> "邮件"
+                is EmailSentEvent -> "邮件"
+                is WebQueryResultEvent -> "网页结果"
+                else -> "通知"
+            }
 
         private fun selectedAppointmentIsAfternoon(): Boolean =
             OneHourScenarioPolicy.isAfternoonBathOnly(latestAgentDecisionIntent)

@@ -536,11 +536,7 @@ private fun WorkbenchArea(
         if (frame.taskCards.isEmpty()) {
             item {
                 Text(
-                    text = when {
-                        frame.recentSystemEvents.isEmpty() -> "等待系统事件。"
-                        frame.busy -> "正在处理系统事件。"
-                        else -> "等待下一系统事件。"
-                    },
+                    text = workbenchPlaceholderText(frame),
                     color = AgentMuted,
                     fontSize = 15.sp,
                     lineHeight = 20.sp,
@@ -577,6 +573,18 @@ private fun WorkbenchArea(
                 SystemEventRow(event)
             }
         }
+    }
+}
+
+private fun workbenchPlaceholderText(frame: AgentExperienceFrame): String {
+    val latestEvent = frame.recentSystemEvents.lastOrNull()
+    if (frame.busy && latestEvent != null) {
+        val sourceText = latestEvent.source.ifBlank { "系统" }
+        return "收到 $sourceText ${latestEvent.eventTypeText}，解读中"
+    }
+    return when {
+        frame.recentSystemEvents.isEmpty() -> "待机中。"
+        else -> "等待下一系统事件。"
     }
 }
 
