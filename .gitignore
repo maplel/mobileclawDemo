@@ -27,6 +27,8 @@ replay_pid*.log
 maestro_hierarchy.txt
 artifacts/device-db/
 artifacts/builds/
+artifacts/screenshots/
+artifacts/*.xml
 
 # Vibe coding embeded
 .codex

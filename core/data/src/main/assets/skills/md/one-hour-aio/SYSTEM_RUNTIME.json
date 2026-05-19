@@ -1,4 +1,4 @@
-﻿{
+{
   "scenarioEvents": [
     {
       "scenarioId": "one_hour_aio",
@@ -115,7 +115,7 @@
       "type": "incoming_sms",
       "source": "PetSmart",
       "title": "PetSmart 到店确认",
-      "body": "Kylin 已到店，正在洗澡和去浮毛，预计 14:45 完成。"
+      "body": "PetSmart 发来 Kylin 到店和开洗确认。"
     },
     {
       "scenarioId": "one_hour_aio",
@@ -160,7 +160,7 @@
       "type": "incoming_sms",
       "source": "PetSmart",
       "title": "PetSmart 进度",
-      "body": "Kylin 毛量比上次多，去浮毛会多 15 分钟，预计 15:00 左右好。"
+      "body": "PetSmart 发来洗护进度更新。"
     },
     {
       "scenarioId": "one_hour_aio",

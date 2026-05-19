@@ -1,4 +1,4 @@
-﻿package com.mobilebot.domain.agent
+package com.mobilebot.domain.agent
 
 import com.mobilebot.domain.LlmConfigurator
 import com.mobilebot.network.LlmClient
@@ -57,7 +57,11 @@ class AgentDecisionIntentNormalizer
             val exact = candidates.firstOrNull { intent ->
                 display.equals(intent.displayLabel, ignoreCase = true) ||
                     raw.equals(intent.id, ignoreCase = true) ||
-                    raw.equals(intent.command, ignoreCase = true)
+                    raw.equals(intent.command, ignoreCase = true) ||
+                    intent.directPhrases.any { phrase ->
+                        display.contains(phrase, ignoreCase = true) ||
+                            raw.contains(phrase, ignoreCase = true)
+                    }
             }
             if (exact != null) return exact
 
@@ -182,6 +186,7 @@ data class AgentDecisionIntent(
     val meaning: String,
     val agentInstruction: String? = null,
     val includeRawText: Boolean = false,
+    val directPhrases: List<String> = emptyList(),
 ) {
     val command: String = "USER_INTENT:$id"
 

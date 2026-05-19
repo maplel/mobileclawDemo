@@ -414,6 +414,17 @@ class AgentExperienceViewModel
                         ),
                     )
                 }
+                oneHourFlow.userIntentCommands(
+                    taskId = _frame.value.activeTaskId,
+                    intentId = normalized.intent.id,
+                    userText = displayText,
+                )?.let { commands ->
+                    applyScenarioAgentCommands(commands, blueprintTimeText(scenarioClock))
+                    pendingSelectedActionLabel = null
+                    handleDueTimelineEvents()
+                    finishScenarioDecisionTurn(selectedActionValue, displayText)
+                    return@launch
+                }
                 if (
                     initialPrecheckDecision &&
                     OneHourScenarioPolicy.isDeferCurrentWeek(normalized.intent)
@@ -2253,6 +2264,7 @@ class AgentExperienceViewModel
                         .put("scenarioId", ONE_HOUR_SCENARIO_ID)
                         .put("to", command.to)
                         .put("message", command.message)
+                        .put("semanticPurpose", command.semanticPurpose)
                         .toString(),
                 )
             }

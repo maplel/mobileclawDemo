@@ -1,4 +1,4 @@
-﻿package com.mobilebot.scenarios.petgrooming
+package com.mobilebot.scenarios.petgrooming
 
 import com.mobilebot.scenarios.runtime.ScenarioAction
 import com.mobilebot.scenarios.runtime.ScenarioConversation
@@ -16,6 +16,7 @@ object PetGroomingTaskSurface {
     const val TASK_ID = "pet-grooming-live"
     const val ACTION_ACCEPT_14 = "pet.accept_14"
     const val ACTION_KEEP_17 = "pet.keep_17"
+    const val PURPOSE_EXPEDITE_SERVICE = "pet_grooming.expedite_service"
 
     fun openSlotSeed(messageBody: String): ScenarioTaskSeed =
         ScenarioTaskSeed(
@@ -205,51 +206,95 @@ object PetGroomingTaskSurface {
             ),
         )
 
-    fun serviceStarted(messageBody: String): ScenarioTaskUpdate =
+    fun expediteRequested(userText: String): ScenarioTaskUpdate =
         ScenarioTaskUpdate(
+            taskId = TASK_ID,
+            status = ScenarioSurfaceStatus.RUNNING,
+            subtitle = "已请 PetSmart 尽量加快",
+            conversations = listOf(
+                ScenarioConversation(ScenarioSurfaceRole.USER, userText),
+                ScenarioConversation(
+                    ScenarioSurfaceRole.AGENT,
+                    "我已发短信请 PetSmart 在不影响安全和效果的前提下尽量加快，后续以门店确认的进度为准。",
+                ),
+            ),
+            logs = listOf(
+                ScenarioLog("发送短信给 PetSmart：麻烦在不影响 Kylin 安全和洗护效果的前提下尽量加快，谢谢。"),
+                ScenarioLog("结构化意图：$PURPOSE_EXPEDITE_SERVICE。"),
+            ),
+            participantsToAdd = listOf(PETSMART),
+            progress = ScenarioProgress(
+                label = "进行中",
+                detail = "已催促门店加快",
+                completed = 6,
+                total = 7,
+            ),
+        )
+
+    fun serviceStarted(
+        messageBody: String,
+        expediteRequested: Boolean = false,
+    ): ScenarioTaskUpdate {
+        val effectiveMessage = if (expediteRequested) {
+            "Kylin 已到店，会按 14:00 开始洗澡和去浮毛；已备注尽量加快，预计 16:00 左右完成，后续以进度更新为准。"
+        } else {
+            "Kylin 已到店，会按 14:00 开始洗澡和去浮毛，预计 16:00 左右完成。"
+        }
+        return ScenarioTaskUpdate(
             taskId = TASK_ID,
             status = ScenarioSurfaceStatus.RUNNING,
             subtitle = "洗澡和去浮毛进行中",
             conversations = listOf(
                 ScenarioConversation(
                     ScenarioSurfaceRole.AGENT,
-                    "PetSmart 确认 Kylin 已开始洗澡和去浮毛，预计 14:45 完成。",
+                    "PetSmart 确认 $effectiveMessage",
                 ),
             ),
             logs = listOf(
-                ScenarioLog("收到 PetSmart 的短信：$messageBody"),
-                ScenarioLog("更新状态：服务已开始，继续等待完成通知。"),
+                ScenarioLog("收到 PetSmart 的短信：$effectiveMessage"),
+                ScenarioLog("更新预计完成时间：16:00 左右，继续等待完成通知。"),
             ),
             progress = ScenarioProgress(
                 label = "进行中",
-                detail = "等待完成通知",
+                detail = "预计 16:00 左右完成",
                 completed = 6,
                 total = 7,
             ),
         )
+    }
 
-    fun serviceProgress(messageBody: String): ScenarioTaskUpdate =
-        ScenarioTaskUpdate(
+    fun serviceProgress(
+        messageBody: String,
+        expediteRequested: Boolean = false,
+    ): ScenarioTaskUpdate {
+        val effectiveMessage = if (expediteRequested) {
+            "我们已经按你的提醒优先处理 Kylin 的吹干和去浮毛，但不能压缩太多，预计 16:05 左右好。"
+        } else {
+            "Kylin 毛量比上次多，去浮毛会多 15 分钟，预计 16:15 左右好。"
+        }
+        val expectedFinish = if (expediteRequested) "16:05" else "16:15"
+        return ScenarioTaskUpdate(
             taskId = TASK_ID,
             status = ScenarioSurfaceStatus.RUNNING,
-            subtitle = "完成时间调整到 15:00",
+            subtitle = "预计 $expectedFinish 左右完成",
             conversations = listOf(
                 ScenarioConversation(
                     ScenarioSurfaceRole.AGENT,
-                    "PetSmart 更新了进度：Kylin 去浮毛会多 15 分钟，预计 15:00 左右完成。我会继续等完成通知。",
+                    "PetSmart 更新了进度：$effectiveMessage 我会继续等完成通知。",
                 ),
             ),
             logs = listOf(
-                ScenarioLog("收到 PetSmart 的短信：$messageBody"),
-                ScenarioLog("更新预计完成时间：15:00 左右。"),
+                ScenarioLog("收到 PetSmart 的短信：$effectiveMessage"),
+                ScenarioLog("更新预计完成时间：$expectedFinish 左右。"),
             ),
             progress = ScenarioProgress(
                 label = "进行中",
-                detail = "继续监听完成通知",
+                detail = "预计 $expectedFinish 左右完成",
                 completed = 6,
                 total = 7,
             ),
         )
+    }
 
     fun departureReminderFired(): ScenarioTaskUpdate =
         ScenarioTaskUpdate(

@@ -29,6 +29,26 @@ object PetGroomingDecisionIntents {
         meaning = "Y wants to keep the original 17:00 bath-only PetSmart appointment and skip the 14:00 change.",
     )
 
+    val ExpediteService = AgentDecisionIntent(
+        id = "pet_grooming.expedite_service",
+        displayLabel = "洗快点",
+        meaning = "Y wants the agent to ask PetSmart to speed up Kylin's current grooming service without compromising safety or service quality.",
+        directPhrases = listOf(
+            "洗快点",
+            "洗快一点",
+            "快点洗",
+            "加快",
+            "催一下",
+            "催促",
+            "早点洗完",
+            "提前完成",
+            "speed up",
+            "faster",
+            "hurry",
+            "expedite",
+        ),
+    )
+
     val BookNine = AgentDecisionIntent(
         id = "pet_grooming.book_0900",
         displayLabel = "约9点",
@@ -77,6 +97,7 @@ object PetGroomingDecisionIntents {
                 DeferCurrentWeek,
                 AcceptOpenSlot,
                 KeepOriginalSlot,
+                ExpediteService,
                 SubjectUnavailable,
                 BookNine,
                 AskAfternoon,

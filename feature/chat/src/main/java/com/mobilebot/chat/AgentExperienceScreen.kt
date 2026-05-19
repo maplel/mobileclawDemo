@@ -246,7 +246,10 @@ private fun PhoneFlowCanvas(
                     .padding(top = 4.dp, bottom = 2.dp),
             )
             InteractionDock(
-                active = frame.decisionPrompt != null && !frame.busy,
+                active = !frame.busy &&
+                    frame.hasStarted &&
+                    frame.systemNotification == null &&
+                    frame.activeCall == null,
                 onOpenChat = onOpenChat,
                 onSubmitText = onSubmitText,
             )

@@ -53,6 +53,7 @@ sealed interface OneHourFlowEffect {
 
 class OneHourScenarioFlow {
     private var petCareAccepted = false
+    private var petCareExpediteRequested = false
 
     fun markPetCareAccepted() {
         petCareAccepted = true
@@ -60,19 +61,28 @@ class OneHourScenarioFlow {
 
     fun markPetCareDeclined() {
         petCareAccepted = false
+        petCareExpediteRequested = false
     }
 
     fun isPetCareAccepted(): Boolean = petCareAccepted
+    fun isPetCareExpediteRequested(): Boolean = petCareExpediteRequested
 
     fun updateRuntimeStateFromPlannerCommands(commands: List<ScenarioAgentCommand>) {
+        if (commands.any { it.requestsPetCareExpedite() }) {
+            petCareExpediteRequested = true
+        }
         when {
             commands.any { it.opensPetCareFollowup() } -> petCareAccepted = true
-            commands.any { it.closesPetCareFollowup() } -> petCareAccepted = false
+            commands.any { it.closesPetCareFollowup() } -> {
+                petCareAccepted = false
+                petCareExpediteRequested = false
+            }
         }
     }
 
     fun acceptPetCareSlot(label: String): OneHourFlowEffect.UpdateTask {
         petCareAccepted = true
+        petCareExpediteRequested = false
         return OneHourFlowEffect.UpdateTask(
             update = PetGroomingTaskSurface.acceptOpenSlot(label),
             activate = true,
@@ -114,7 +124,20 @@ class OneHourScenarioFlow {
 
     fun keepOriginalPetCareSlotCommands(label: String): List<ScenarioAgentCommand> {
         petCareAccepted = false
+        petCareExpediteRequested = false
         return listOf(ScenarioAgentCommand.UpdateTask(PetGroomingTaskSurface.keepOriginalSlot(label)))
+    }
+
+    fun userIntentCommands(
+        taskId: String?,
+        intentId: String?,
+        userText: String,
+    ): List<ScenarioAgentCommand>? {
+        return when (intentId) {
+            PetGroomingTaskSurface.PURPOSE_EXPEDITE_SERVICE ->
+                if (petCareAccepted) petCareExpediteCommands(userText) else null
+            else -> null
+        }
     }
 
     fun userDecisionCommands(
@@ -136,6 +159,25 @@ class OneHourScenarioFlow {
 
             else -> null
         }
+    }
+
+    private fun petCareExpediteCommands(userText: String): List<ScenarioAgentCommand> {
+        val update = PetGroomingTaskSurface.expediteRequested(userText)
+        return listOf(
+            ScenarioAgentCommand.UpdateTask(update),
+            ScenarioAgentCommand.SendSms(
+                taskId = update.taskId,
+                to = "PetSmart",
+                displayName = "PetSmart",
+                message = "麻烦在不影响 Kylin 安全和洗护效果的前提下尽量加快，谢谢。",
+                semanticPurpose = PetGroomingTaskSurface.PURPOSE_EXPEDITE_SERVICE,
+            ),
+            ScenarioAgentCommand.WaitSms(
+                taskId = update.taskId,
+                contact = "PetSmart",
+                reason = "等待 PetSmart 更新加快后的洗护进度",
+            ),
+        )
     }
 
     fun openSlotClarificationCommands(userText: String): List<ScenarioAgentCommand> {
@@ -198,9 +240,13 @@ class OneHourScenarioFlow {
             "property-coldchain-secured" -> listOf(OneHourFlowEffect.UpdateTask(ColdchainDeliveryTaskSurface.propertyConfirmed(event.body)))
             "driver-kylin-picked-up" -> ifPetAccepted(PetGroomingTaskSurface.driverPickedUpKylin(event.body))
             "driver-arrived-petsmart" -> ifPetAccepted(PetGroomingTaskSurface.driverArrivedPetSmart(event.body))
-            "petsmart-service-started" -> ifPetAccepted(PetGroomingTaskSurface.serviceStarted(event.body))
+            "petsmart-service-started" -> ifPetAccepted(
+                PetGroomingTaskSurface.serviceStarted(event.body, petCareExpediteRequested),
+            )
             "ella-shopping-clarify" -> listOf(OneHourFlowEffect.UpdateTask(FamilyShoppingTaskSurface.clarifiedList(event.body)))
-            "petsmart-service-progress" -> ifPetAccepted(PetGroomingTaskSurface.serviceProgress(event.body))
+            "petsmart-service-progress" -> ifPetAccepted(
+                PetGroomingTaskSurface.serviceProgress(event.body, petCareExpediteRequested),
+            )
             else -> emptyList()
         }
 
@@ -253,6 +299,11 @@ class OneHourScenarioFlow {
 
     private fun ifPetAccepted(update: ScenarioTaskUpdate): List<OneHourFlowEffect> =
         if (petCareAccepted) listOf(OneHourFlowEffect.UpdateTask(update)) else emptyList()
+
+    private fun ScenarioAgentCommand.requestsPetCareExpedite(): Boolean =
+        this is ScenarioAgentCommand.SendSms &&
+            taskId == PetGroomingTaskSurface.TASK_ID &&
+            semanticPurpose == PetGroomingTaskSurface.PURPOSE_EXPEDITE_SERVICE
 
     private fun ScenarioAgentCommand.opensPetCareFollowup(): Boolean =
         when (this) {

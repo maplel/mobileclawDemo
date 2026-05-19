@@ -3,6 +3,7 @@ package com.mobilebot.scenarios.onehour
 import com.mobilebot.scenarios.runtime.ScenarioSurfaceStatus
 import com.mobilebot.scenarios.runtime.ScenarioAgentCommand
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingTaskSurface
+import com.mobilebot.scenarios.petgrooming.PetGroomingTaskSurface
 import com.mobilebot.systemruntime.CallEndedEvent
 import com.mobilebot.systemruntime.IncomingCallEvent
 import com.mobilebot.systemruntime.IncomingSmsEvent
@@ -443,6 +444,75 @@ class OneHourScenarioFlowTest {
             .map { (id, _) -> id }
 
         assertTrue("Original-slot branch still routed pet followups: $routedPetEvents", routedPetEvents.isEmpty())
+    }
+
+    @Test
+    fun petGroomingProgressUsesRealisticDurationWindow() {
+        val flow = OneHourScenarioFlow()
+        flow.acceptPetCareSlot("可以")
+
+        val started = flow.handle(
+            sms(
+                id = "petsmart-service-started",
+                source = "PetSmart",
+                body = "PetSmart 发来 Kylin 到店和开洗确认。",
+            ),
+        ).single() as OneHourFlowEffect.UpdateTask
+        val progress = flow.handle(
+            sms(
+                id = "petsmart-service-progress",
+                source = "PetSmart",
+                body = "PetSmart 发来洗护进度更新。",
+            ),
+        ).single() as OneHourFlowEffect.UpdateTask
+
+        val startedText = started.update.conversations.joinToString(" ") { it.text }
+        val progressText = progress.update.conversations.joinToString(" ") { it.text }
+        val petEventBodies = scriptEvents()
+            .filter { it.getString("id") in setOf("petsmart-service-started", "petsmart-service-progress") }
+            .joinToString(" ") { it.getString("body") }
+
+        assertTrue(startedText.contains("16:00"))
+        assertFalse(startedText.contains("14:45"))
+        assertEquals("预计 16:15 左右完成", progress.update.subtitle)
+        assertTrue(progressText.contains("16:15"))
+        assertFalse(progressText.contains("15:00"))
+        assertFalse(petEventBodies.contains("16:00"))
+        assertFalse(petEventBodies.contains("16:15"))
+        assertFalse(petEventBodies.contains("14:45"))
+        assertFalse(petEventBodies.contains("15:00"))
+    }
+
+    @Test
+    fun petGroomingExpediteIntentChangesLaterProgressThroughStructuredAction() {
+        val flow = OneHourScenarioFlow()
+        flow.acceptPetCareSlot("可以")
+
+        val commands = flow.userIntentCommands(
+            taskId = "pet-grooming-live",
+            intentId = PetGroomingTaskSurface.PURPOSE_EXPEDITE_SERVICE,
+            userText = "让宠物店洗快点",
+        ) ?: error("Expected expedite commands")
+        val sms = commands.single { it is ScenarioAgentCommand.SendSms } as ScenarioAgentCommand.SendSms
+
+        assertEquals("PetSmart", sms.to)
+        assertEquals(PetGroomingTaskSurface.PURPOSE_EXPEDITE_SERVICE, sms.semanticPurpose)
+
+        flow.updateRuntimeStateFromPlannerCommands(commands)
+        assertTrue(flow.isPetCareExpediteRequested())
+
+        val progress = flow.handle(
+            sms(
+                id = "petsmart-service-progress",
+                source = "PetSmart",
+                body = "PetSmart 发来洗护进度更新。",
+            ),
+        ).single() as OneHourFlowEffect.UpdateTask
+        val progressText = progress.update.conversations.joinToString(" ") { it.text }
+
+        assertEquals("预计 16:05 左右完成", progress.update.subtitle)
+        assertTrue(progressText.contains("16:05"))
+        assertFalse(progressText.contains("16:15"))
     }
 
     @Test

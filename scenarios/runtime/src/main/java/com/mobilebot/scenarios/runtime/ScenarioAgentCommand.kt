@@ -23,6 +23,7 @@ sealed interface ScenarioAgentCommand {
         val to: String,
         val message: String,
         val displayName: String? = null,
+        val semanticPurpose: String? = null,
     ) : ScenarioAgentCommand
 
     data class WaitSms(
@@ -206,6 +207,7 @@ object ScenarioCommandCodec {
                     .put("to", JSONObject().put("type", "string"))
                     .put("message", JSONObject().put("type", "string"))
                     .put("displayName", JSONObject().put("type", "string"))
+                    .put("semanticPurpose", JSONObject().put("type", "string"))
                     .put("contact", JSONObject().put("type", "string"))
                     .put("reason", JSONObject().put("type", "string"))
                     .put("body", JSONObject().put("type", "string"))
@@ -285,6 +287,7 @@ object ScenarioCommandCodec {
                 to = obj.requiredString("to", index),
                 message = obj.requiredString("message", index),
                 displayName = obj.optString("displayName").ifBlank { null },
+                semanticPurpose = obj.optString("semanticPurpose").ifBlank { null },
             )
             "wait_sms" -> ScenarioAgentCommand.WaitSms(
                 taskId = obj.requiredString("taskId", index),
@@ -439,6 +442,7 @@ object ScenarioCommandCodec {
                 .put("to", command.to)
                 .put("message", command.message)
                 .put("displayName", command.displayName)
+                .put("semanticPurpose", command.semanticPurpose)
             is ScenarioAgentCommand.WaitSms -> JSONObject()
                 .put("type", "wait_sms")
                 .put("taskId", command.taskId)
