@@ -4,6 +4,8 @@ import com.mobilebot.scenarios.coldchaindelivery.ColdchainDeliveryTaskSurface
 import com.mobilebot.scenarios.familyshopping.FamilyShoppingTaskSurface
 import com.mobilebot.scenarios.healthsupply.HealthSupplyTaskSurface
 import com.mobilebot.scenarios.petgrooming.PetGroomingTaskSurface
+import com.mobilebot.scenarios.petgrooming.PetGroomingUserTurn
+import com.mobilebot.scenarios.petgrooming.PetGroomingUserTurnInterpreter
 import com.mobilebot.scenarios.runtime.ScenarioAgentCommand
 import com.mobilebot.scenarios.runtime.ScenarioCommandAuthorization
 import com.mobilebot.scenarios.runtime.ScenarioLog
@@ -52,16 +54,34 @@ sealed interface OneHourFlowEffect {
 }
 
 class OneHourScenarioFlow {
+    private enum class PetCareStage {
+        NONE,
+        OPEN_SLOT,
+        ACCEPTED,
+        DRIVER_CONFIRMED,
+        REMINDER_FIRED,
+        PICKED_UP,
+        ARRIVED_AT_PETSMART,
+        SERVICE_STARTED,
+        SERVICE_PROGRESS,
+        RESCHEDULED,
+        CANCELLED,
+        DECLINED,
+    }
+
     private var petCareAccepted = false
     private var petCareExpediteRequested = false
+    private var petCareStage = PetCareStage.NONE
 
     fun markPetCareAccepted() {
         petCareAccepted = true
+        petCareStage = PetCareStage.ACCEPTED
     }
 
     fun markPetCareDeclined() {
         petCareAccepted = false
         petCareExpediteRequested = false
+        petCareStage = PetCareStage.DECLINED
     }
 
     fun isPetCareAccepted(): Boolean = petCareAccepted
@@ -72,10 +92,28 @@ class OneHourScenarioFlow {
             petCareExpediteRequested = true
         }
         when {
-            commands.any { it.opensPetCareFollowup() } -> petCareAccepted = true
+            commands.any { it.requestsPetCareReschedule() } -> {
+                petCareAccepted = false
+                petCareExpediteRequested = false
+                petCareStage = PetCareStage.RESCHEDULED
+            }
+            commands.any { it.requestsPetCareCancel() } -> {
+                petCareAccepted = false
+                petCareExpediteRequested = false
+                petCareStage = PetCareStage.CANCELLED
+            }
+            commands.any { it.opensPetCareFollowup() } -> {
+                petCareAccepted = true
+                if (petCareStage == PetCareStage.NONE || petCareStage == PetCareStage.OPEN_SLOT) {
+                    petCareStage = PetCareStage.ACCEPTED
+                }
+            }
             commands.any { it.closesPetCareFollowup() } -> {
                 petCareAccepted = false
                 petCareExpediteRequested = false
+                if (petCareStage !in setOf(PetCareStage.RESCHEDULED, PetCareStage.CANCELLED)) {
+                    petCareStage = PetCareStage.DECLINED
+                }
             }
         }
     }
@@ -83,20 +121,25 @@ class OneHourScenarioFlow {
     fun acceptPetCareSlot(label: String): OneHourFlowEffect.UpdateTask {
         petCareAccepted = true
         petCareExpediteRequested = false
+        petCareStage = PetCareStage.ACCEPTED
         return OneHourFlowEffect.UpdateTask(
             update = PetGroomingTaskSurface.acceptOpenSlot(label),
             activate = true,
         )
     }
 
-    fun keepOriginalPetCareSlot(label: String): OneHourFlowEffect.UpdateTask =
-        OneHourFlowEffect.UpdateTask(
+    fun keepOriginalPetCareSlot(label: String): OneHourFlowEffect.UpdateTask {
+        petCareStage = PetCareStage.DECLINED
+        return OneHourFlowEffect.UpdateTask(
             update = PetGroomingTaskSurface.keepOriginalSlot(label),
             activate = true,
         )
+    }
 
     fun acceptPetCareSlotCommands(label: String): List<ScenarioAgentCommand> {
         petCareAccepted = true
+        petCareExpediteRequested = false
+        petCareStage = PetCareStage.ACCEPTED
         val update = PetGroomingTaskSurface.acceptOpenSlot(label).copy(
             logs = listOf(ScenarioLog("用户确认改到 14:00 洗澡和去浮毛。")),
         )
@@ -125,7 +168,35 @@ class OneHourScenarioFlow {
     fun keepOriginalPetCareSlotCommands(label: String): List<ScenarioAgentCommand> {
         petCareAccepted = false
         petCareExpediteRequested = false
+        petCareStage = PetCareStage.DECLINED
         return listOf(ScenarioAgentCommand.UpdateTask(PetGroomingTaskSurface.keepOriginalSlot(label)))
+    }
+
+    fun userTurnCommands(
+        taskId: String?,
+        userText: String,
+    ): List<ScenarioAgentCommand>? {
+        if (petCareStage == PetCareStage.OPEN_SLOT && !petCareAccepted) return null
+        val turn = PetGroomingUserTurnInterpreter.interpret(
+            taskId = taskId,
+            userText = userText,
+            petCareKnown = petCareStage != PetCareStage.NONE,
+        ) ?: return null
+        return when (turn) {
+            PetGroomingUserTurn.ExpediteService ->
+                if (petCareAccepted) {
+                    petCareExpediteCommands(userText)
+                } else {
+                    petCareClarificationCommands(userText, "pet_grooming_action")
+                }
+            PetGroomingUserTurn.AskStatus -> petCareStatusCommands(userText)
+            PetGroomingUserTurn.CancelService -> petCareCancelCommands(userText)
+            PetGroomingUserTurn.OutOfScope -> petCareOutOfScopeCommands(userText)
+            is PetGroomingUserTurn.NeedsClarification ->
+                petCareClarificationCommands(userText, turn.reason)
+            is PetGroomingUserTurn.RescheduleService ->
+                petCareRescheduleCommands(userText, turn.targetWeekOffset, turn.unavailableWeekOffsets)
+        }
     }
 
     fun userIntentCommands(
@@ -162,6 +233,7 @@ class OneHourScenarioFlow {
     }
 
     private fun petCareExpediteCommands(userText: String): List<ScenarioAgentCommand> {
+        petCareExpediteRequested = true
         val update = PetGroomingTaskSurface.expediteRequested(userText)
         return listOf(
             ScenarioAgentCommand.UpdateTask(update),
@@ -179,6 +251,107 @@ class OneHourScenarioFlow {
             ),
         )
     }
+
+    private fun petCareRescheduleCommands(
+        userText: String,
+        targetWeekOffset: Int,
+        unavailableWeekOffsets: List<Int>,
+    ): List<ScenarioAgentCommand> {
+        if (!petCareAccepted) {
+            return petCareClarificationCommands(userText, "pet_grooming_action")
+        }
+        if (!petCareStage.allowsDirectScheduleChange()) {
+            return listOf(
+                ScenarioAgentCommand.UpdateTask(
+                    PetGroomingTaskSurface.rescheduleConflict(userText, petCareStage.stageText()),
+                ),
+            )
+        }
+        val targetLabel = PetGroomingUserTurnInterpreter.weekLabel(targetWeekOffset)
+        val unavailableText = unavailableWeekOffsets
+            .map { PetGroomingUserTurnInterpreter.weekLabel(it) }
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("、", prefix = "，避开 ", postfix = " 没空的时间")
+            .orEmpty()
+        val update = PetGroomingTaskSurface.rescheduleRequested(
+            userText = userText,
+            targetWeekOffset = targetWeekOffset,
+            unavailableWeekOffsets = unavailableWeekOffsets,
+        )
+        petCareAccepted = false
+        petCareExpediteRequested = false
+        petCareStage = PetCareStage.RESCHEDULED
+        return listOf(
+            ScenarioAgentCommand.UpdateTask(update),
+            ScenarioAgentCommand.SendSms(
+                taskId = update.taskId,
+                to = "PetSmart",
+                displayName = "PetSmart",
+                message = "您好，Kylin 今天 14:00 的洗澡和去浮毛需要改期，麻烦取消当前安排并改到$targetLabel$unavailableText，谢谢。",
+                semanticPurpose = PetGroomingTaskSurface.PURPOSE_RESCHEDULE_SERVICE,
+            ),
+            ScenarioAgentCommand.SendSms(
+                taskId = update.taskId,
+                to = "Driver",
+                displayName = "老陈",
+                message = "老陈，Kylin 今天 14:00 的 PetSmart 行程改期了，13:20 不用来接。",
+                semanticPurpose = PetGroomingTaskSurface.PURPOSE_RESCHEDULE_SERVICE,
+            ),
+            ScenarioAgentCommand.WaitSms(
+                taskId = update.taskId,
+                contact = "PetSmart",
+                reason = "等待 PetSmart 确认新的洗护档期",
+            ),
+        )
+    }
+
+    private fun petCareCancelCommands(userText: String): List<ScenarioAgentCommand> {
+        if (!petCareAccepted || !petCareStage.allowsDirectScheduleChange()) {
+            return petCareClarificationCommands(userText, "pet_grooming_action")
+        }
+        val update = PetGroomingTaskSurface.cancelRequested(userText, petCareStage.stageText())
+        petCareAccepted = false
+        petCareExpediteRequested = false
+        petCareStage = PetCareStage.CANCELLED
+        return listOf(
+            ScenarioAgentCommand.UpdateTask(update),
+            ScenarioAgentCommand.SendSms(
+                taskId = update.taskId,
+                to = "PetSmart",
+                displayName = "PetSmart",
+                message = "您好，Kylin 今天 14:00 的洗澡和去浮毛取消了，谢谢。",
+                semanticPurpose = PetGroomingTaskSurface.PURPOSE_CANCEL_SERVICE,
+            ),
+            ScenarioAgentCommand.SendSms(
+                taskId = update.taskId,
+                to = "Driver",
+                displayName = "老陈",
+                message = "老陈，Kylin 今天 14:00 的 PetSmart 行程取消了，13:20 不用来接。",
+                semanticPurpose = PetGroomingTaskSurface.PURPOSE_CANCEL_SERVICE,
+            ),
+        )
+    }
+
+    private fun petCareStatusCommands(userText: String): List<ScenarioAgentCommand> =
+        listOf(
+            ScenarioAgentCommand.UpdateTask(
+                PetGroomingTaskSurface.statusAnswer(
+                    userText = userText,
+                    stageText = petCareStage.stageText(),
+                    etaText = petCareStage.etaText(petCareExpediteRequested),
+                    completed = petCareStage.progressCompleted(),
+                ),
+            ),
+        )
+
+    private fun petCareClarificationCommands(
+        userText: String,
+        reason: String,
+    ): List<ScenarioAgentCommand> =
+        listOf(ScenarioAgentCommand.UpdateTask(PetGroomingTaskSurface.clarificationNeeded(userText, reason)))
+
+    private fun petCareOutOfScopeCommands(userText: String): List<ScenarioAgentCommand> =
+        listOf(ScenarioAgentCommand.UpdateTask(PetGroomingTaskSurface.outOfScope(userText)))
 
     fun openSlotClarificationCommands(userText: String): List<ScenarioAgentCommand> {
         val (conversations, decision) = PetGroomingTaskSurface.openSlotClarification(userText)
@@ -233,19 +406,32 @@ class OneHourScenarioFlow {
 
     private fun handleIncomingSms(event: IncomingSmsEvent): List<OneHourFlowEffect> =
         when (event.id) {
-            "petsmart-open-slot" -> listOf(OneHourFlowEffect.CreateTask(PetGroomingTaskSurface.openSlotSeed(event.body)))
-            "driver-1320-confirm" -> ifPetAccepted(PetGroomingTaskSurface.driverPickupConfirmation(event.body))
+            "petsmart-open-slot" -> listOf(
+                OneHourFlowEffect.CreateTask(PetGroomingTaskSurface.openSlotSeed(event.body)),
+            ).also { petCareStage = PetCareStage.OPEN_SLOT }
+            "driver-1320-confirm" -> ifPetAccepted(
+                PetGroomingTaskSurface.driverPickupConfirmation(event.body),
+                PetCareStage.DRIVER_CONFIRMED,
+            )
             "ella-shopping-followup" -> listOf(OneHourFlowEffect.UpdateTask(FamilyShoppingTaskSurface.priorityFollowup(event.body)))
             "property-courier-help" -> listOf(OneHourFlowEffect.UpdateTask(ColdchainDeliveryTaskSurface.propertyHelp(event.body)))
             "property-coldchain-secured" -> listOf(OneHourFlowEffect.UpdateTask(ColdchainDeliveryTaskSurface.propertyConfirmed(event.body)))
-            "driver-kylin-picked-up" -> ifPetAccepted(PetGroomingTaskSurface.driverPickedUpKylin(event.body))
-            "driver-arrived-petsmart" -> ifPetAccepted(PetGroomingTaskSurface.driverArrivedPetSmart(event.body))
+            "driver-kylin-picked-up" -> ifPetAccepted(
+                PetGroomingTaskSurface.driverPickedUpKylin(event.body),
+                PetCareStage.PICKED_UP,
+            )
+            "driver-arrived-petsmart" -> ifPetAccepted(
+                PetGroomingTaskSurface.driverArrivedPetSmart(event.body),
+                PetCareStage.ARRIVED_AT_PETSMART,
+            )
             "petsmart-service-started" -> ifPetAccepted(
                 PetGroomingTaskSurface.serviceStarted(event.body, petCareExpediteRequested),
+                PetCareStage.SERVICE_STARTED,
             )
             "ella-shopping-clarify" -> listOf(OneHourFlowEffect.UpdateTask(FamilyShoppingTaskSurface.clarifiedList(event.body)))
             "petsmart-service-progress" -> ifPetAccepted(
                 PetGroomingTaskSurface.serviceProgress(event.body, petCareExpediteRequested),
+                PetCareStage.SERVICE_PROGRESS,
             )
             else -> emptyList()
         }
@@ -284,6 +470,7 @@ class OneHourScenarioFlow {
 
     private fun handleReminder(event: ReminderFiredEvent): List<OneHourFlowEffect> =
         if (petCareAccepted) {
+            petCareStage = PetCareStage.REMINDER_FIRED
             listOf(
                 OneHourFlowEffect.ShowSystemLayer(
                     id = event.id,
@@ -297,13 +484,31 @@ class OneHourScenarioFlow {
             emptyList()
         }
 
-    private fun ifPetAccepted(update: ScenarioTaskUpdate): List<OneHourFlowEffect> =
-        if (petCareAccepted) listOf(OneHourFlowEffect.UpdateTask(update)) else emptyList()
+    private fun ifPetAccepted(
+        update: ScenarioTaskUpdate,
+        nextStage: PetCareStage? = null,
+    ): List<OneHourFlowEffect> =
+        if (petCareAccepted) {
+            nextStage?.let { petCareStage = it }
+            listOf(OneHourFlowEffect.UpdateTask(update))
+        } else {
+            emptyList()
+        }
 
     private fun ScenarioAgentCommand.requestsPetCareExpedite(): Boolean =
         this is ScenarioAgentCommand.SendSms &&
             taskId == PetGroomingTaskSurface.TASK_ID &&
             semanticPurpose == PetGroomingTaskSurface.PURPOSE_EXPEDITE_SERVICE
+
+    private fun ScenarioAgentCommand.requestsPetCareReschedule(): Boolean =
+        this is ScenarioAgentCommand.SendSms &&
+            taskId == PetGroomingTaskSurface.TASK_ID &&
+            semanticPurpose == PetGroomingTaskSurface.PURPOSE_RESCHEDULE_SERVICE
+
+    private fun ScenarioAgentCommand.requestsPetCareCancel(): Boolean =
+        this is ScenarioAgentCommand.SendSms &&
+            taskId == PetGroomingTaskSurface.TASK_ID &&
+            semanticPurpose == PetGroomingTaskSurface.PURPOSE_CANCEL_SERVICE
 
     private fun ScenarioAgentCommand.opensPetCareFollowup(): Boolean =
         when (this) {
@@ -323,6 +528,59 @@ class OneHourScenarioFlow {
             is ScenarioAgentCommand.UpdateTask ->
                 update.taskId == PetGroomingTaskSurface.TASK_ID && update.status == ScenarioSurfaceStatus.DONE
             else -> false
+        }
+
+    private fun PetCareStage.allowsDirectScheduleChange(): Boolean =
+        this in setOf(
+            PetCareStage.ACCEPTED,
+            PetCareStage.DRIVER_CONFIRMED,
+            PetCareStage.REMINDER_FIRED,
+        )
+
+    private fun PetCareStage.stageText(): String =
+        when (this) {
+            PetCareStage.NONE -> "还没有 Kylin 洗护任务"
+            PetCareStage.OPEN_SLOT -> "PetSmart 14:00 空档待确认"
+            PetCareStage.ACCEPTED -> "已改约 14:00，等待司机确认"
+            PetCareStage.DRIVER_CONFIRMED -> "司机已确认 13:20 接 Kylin"
+            PetCareStage.REMINDER_FIRED -> "已提醒下楼，等待司机接到 Kylin"
+            PetCareStage.PICKED_UP -> "已由老陈接上车，正在去 PetSmart"
+            PetCareStage.ARRIVED_AT_PETSMART -> "已到 PetSmart，等待开洗"
+            PetCareStage.SERVICE_STARTED -> "已在 PetSmart 开始洗澡和去浮毛"
+            PetCareStage.SERVICE_PROGRESS -> "PetSmart 洗护进行中"
+            PetCareStage.RESCHEDULED -> "已请求改期，当前 14:00 链路停止"
+            PetCareStage.CANCELLED -> "已取消当前 14:00 洗护"
+            PetCareStage.DECLINED -> "已保留原来的 17:00 只洗澡安排"
+        }
+
+    private fun PetCareStage.etaText(expediteRequested: Boolean): String =
+        when (this) {
+            PetCareStage.SERVICE_STARTED -> "按记忆推算洗澡约 1.5 小时、去浮毛约 30 到 40 分钟，预计 16:00 左右完成。"
+            PetCareStage.SERVICE_PROGRESS ->
+                if (expediteRequested) {
+                    "门店反馈毛量比上次多，但已按你的提醒优先处理，预计仍在 16:00 左右完成。"
+                } else {
+                    "门店反馈浮毛比上次多，预计 16:15 左右完成。"
+                }
+            PetCareStage.RESCHEDULED -> "等待 PetSmart 确认新档期。"
+            PetCareStage.CANCELLED -> "当前洗护和接送已停止。"
+            else -> "后续仍按当前场景 runtime 推进。"
+        }
+
+    private fun PetCareStage.progressCompleted(): Int =
+        when (this) {
+            PetCareStage.NONE,
+            PetCareStage.OPEN_SLOT -> 0
+            PetCareStage.ACCEPTED -> 2
+            PetCareStage.DRIVER_CONFIRMED -> 3
+            PetCareStage.REMINDER_FIRED -> 4
+            PetCareStage.PICKED_UP,
+            PetCareStage.ARRIVED_AT_PETSMART -> 5
+            PetCareStage.SERVICE_STARTED,
+            PetCareStage.SERVICE_PROGRESS -> 6
+            PetCareStage.RESCHEDULED,
+            PetCareStage.CANCELLED,
+            PetCareStage.DECLINED -> 7
         }
 
     companion object {

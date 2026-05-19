@@ -510,9 +510,117 @@ class OneHourScenarioFlowTest {
         ).single() as OneHourFlowEffect.UpdateTask
         val progressText = progress.update.conversations.joinToString(" ") { it.text }
 
-        assertEquals("预计 16:05 左右完成", progress.update.subtitle)
-        assertTrue(progressText.contains("16:05"))
+        assertEquals("预计 16:00 左右完成", progress.update.subtitle)
+        assertTrue(progressText.contains("16:00"))
+        assertFalse(progressText.contains("16:05"))
         assertFalse(progressText.contains("16:15"))
+
+        val status = flow.userTurnCommands(
+            taskId = PetGroomingTaskSurface.TASK_ID,
+            userText = "status",
+        )?.single() as ScenarioAgentCommand.UpdateTask
+        val statusText = status.update.conversations.joinToString(" ") { it.text }
+
+        assertTrue(statusText.contains("16:00"))
+        assertFalse(statusText.contains("16:05"))
+        assertFalse(statusText.contains("16:15"))
+    }
+
+    @Test
+    fun petGroomingRescheduleFreeformStopsCurrentRuntimeFollowups() {
+        val flow = OneHourScenarioFlow()
+        flow.acceptPetCareSlot("可以")
+
+        val commands = flow.userTurnCommands(
+            taskId = PetGroomingTaskSurface.TASK_ID,
+            userText = "这周和下下周没空，改下下下周",
+        ) ?: error("Expected reschedule commands")
+        val update = commands.first() as ScenarioAgentCommand.UpdateTask
+        val petsmartSms = commands
+            .filterIsInstance<ScenarioAgentCommand.SendSms>()
+            .single { it.to == "PetSmart" }
+
+        assertEquals(ScenarioSurfaceStatus.DONE, update.update.status)
+        assertEquals(PetGroomingTaskSurface.PURPOSE_RESCHEDULE_SERVICE, petsmartSms.semanticPurpose)
+        assertTrue(petsmartSms.message.contains("下下下周"))
+        assertTrue(petsmartSms.message.contains("这周"))
+        assertTrue(petsmartSms.message.contains("下下周"))
+        assertFalse(flow.isPetCareAccepted())
+        assertTrue(
+            flow.handle(
+                sms(
+                    id = "driver-kylin-picked-up",
+                    source = "Driver",
+                    body = "老陈发来 Kylin 已上车确认。",
+                ),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun petGroomingLateRescheduleCreatesConflictWithoutSms() {
+        val flow = OneHourScenarioFlow()
+        flow.acceptPetCareSlot("可以")
+        flow.handle(
+            sms(
+                id = "petsmart-service-started",
+                source = "PetSmart",
+                body = "PetSmart 发来 Kylin 到店和开洗确认。",
+            ),
+        )
+
+        val commands = flow.userTurnCommands(
+            taskId = PetGroomingTaskSurface.TASK_ID,
+            userText = "改成下周吧",
+        ) ?: error("Expected conflict command")
+        val update = commands.single() as ScenarioAgentCommand.UpdateTask
+        val text = update.update.conversations.joinToString(" ") { it.text }
+
+        assertTrue(flow.isPetCareAccepted())
+        assertEquals(ScenarioSurfaceStatus.RUNNING, update.update.status)
+        assertTrue(text.contains("不能直接"))
+        assertTrue(commands.none { it is ScenarioAgentCommand.SendSms })
+    }
+
+    @Test
+    fun petGroomingStatusQuestionUsesScenarioState() {
+        val flow = OneHourScenarioFlow()
+        flow.acceptPetCareSlot("可以")
+        flow.handle(
+            sms(
+                id = "petsmart-service-started",
+                source = "PetSmart",
+                body = "PetSmart 发来 Kylin 到店和开洗确认。",
+            ),
+        )
+
+        val commands = flow.userTurnCommands(
+            taskId = PetGroomingTaskSurface.TASK_ID,
+            userText = "status",
+        ) ?: error("Expected status command")
+        val update = commands.single() as ScenarioAgentCommand.UpdateTask
+        val text = update.update.conversations.joinToString(" ") { it.text }
+
+        assertEquals(ScenarioSurfaceStatus.RUNNING, update.update.status)
+        assertTrue(text.contains("PetSmart"))
+        assertTrue(text.contains("16:00"))
+        assertTrue(commands.none { it is ScenarioAgentCommand.SendSms })
+    }
+
+    @Test
+    fun petGroomingAmbiguousRescheduleNeedsClarificationWithoutSms() {
+        val flow = OneHourScenarioFlow()
+        flow.acceptPetCareSlot("可以")
+
+        val commands = flow.userTurnCommands(
+            taskId = PetGroomingTaskSurface.TASK_ID,
+            userText = "change time",
+        ) ?: error("Expected clarification command")
+        val update = commands.single() as ScenarioAgentCommand.UpdateTask
+
+        assertEquals(ScenarioSurfaceStatus.BLOCKED, update.update.status)
+        assertTrue(update.update.conversations.joinToString(" ") { it.text }.contains("明确目标时间"))
+        assertTrue(commands.none { it is ScenarioAgentCommand.SendSms })
     }
 
     @Test

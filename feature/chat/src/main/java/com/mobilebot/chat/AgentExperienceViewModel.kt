@@ -374,6 +374,24 @@ class AgentExperienceViewModel
                 )
             }
             viewModelScope.launch {
+                oneHourFlow.userTurnCommands(
+                    taskId = _frame.value.activeTaskId,
+                    userText = displayText,
+                )?.let { commands ->
+                    _frame.update {
+                        it.copy(
+                            debugTrace = appendTrace(
+                                it.debugTrace,
+                                "scenario user turn -> local runtime",
+                            ),
+                        )
+                    }
+                    applyScenarioAgentCommands(commands, blueprintTimeText(scenarioClock))
+                    pendingSelectedActionLabel = null
+                    handleDueTimelineEvents()
+                    finishScenarioDecisionTurn(selectedActionValue, displayText)
+                    return@launch
+                }
                 val normalized = decisionIntentNormalizer.normalize(
                     AgentDecisionInput(
                         contextId = scenario.scenarioId,
