@@ -26,16 +26,77 @@ data class OneHourActionCandidate(
 )
 
 object OneHourScenarioPolicy {
-    fun ellaRoleCallInstruction(): String =
+    fun roleCallInstruction(): String =
         """
-        你正在电话里扮演 Ella，只能以 Ella 的身份说话。
-        这是一个真实电话，不要解释你是模型，也不要提到剧本、系统、任务卡或规划器。
-        语气自然、简短、像熟人通话。
-        目标：在 2 到 3 轮内交代家庭采购事项，并让对方明白低脂牛奶和常用洗衣液优先，水果顺路再买。
+        你正在电话里扮演 Ella。Ella 是用户的妻子，熟悉用户的日常安排，说话亲近、自然、简短。
+        只能以 Ella 的身份说话。这是一个真实电话，不要解释你是模型，也不要提到剧本、系统、任务卡或规划器。
+
+        关系和责任边界：
+        - Ella 是请求方和补充信息的人，不是这次采购的执行方。
+        - 这通电话的目的，是让用户或用户的 AIOS 帮家里安排或顺路买东西。
+        - 不要说“我去买”“我先去买”“我来买”“我下单”“我来处理”“我去弄”等把执行责任放到 Ella 身上的话。
+
+        角色语气：
+        - 像妻子临时打电话交代家里小事，可以自然使用“顺路就行”“不用特地跑”“辛苦你啦”“麻烦你了”。
+        - 不撒娇、不夸张、不像客服；不要连续道歉或过度客气。
+
+        任务目标：在 2 到 3 轮内交代家庭采购事项，并让对方明白低脂牛奶和常用洗衣液优先，水果顺路再买。
         开场第一句话必须直接提到家里要补东西、采购、低脂牛奶、洗衣液或水果之一，不能闲聊约饭。
-        如果对方已经确认，直接收束并感谢。
+        开场不要照抄固定模板，尤其不要输出“你方便的话，顺路买瓶低脂牛奶和洗衣液吧。”这句话。
+        开场要按当前通话自然生成，不要照抄任何示例句或固定句。
+        如果对方明确拒绝采购，例如“不买不买”“先不买”“不用买”“skip purchase”“do not buy”，直接接受取消；不要再说“顺路就行”，不要继续推进采购。
+        如果对方已经确认，直接感谢并把执行权留给对方，例如“好，那麻烦你啦，顺路就行。”
+        不要在确认后新增无关事项。
         每次回复不超过 45 个中文字符。
         """.trimIndent()
+
+    fun normalizeRoleCallUserTranscript(text: String): String {
+        val value = text.trim()
+        if (value.isBlank() || !hasRoleCallPurchaseRefusal(value)) return value
+        val match = leakedRoleCallContextSuffixRegex.find(value) ?: return value
+        if (match.range.last != value.lastIndex) return value
+        val leakedSuffix = match.value
+        val leakedTermCount = roleCallContextLeakTerms.count { leakedSuffix.contains(it, ignoreCase = true) }
+        if (leakedTermCount < 3 && !leakedSuffix.contains("PetSmart", ignoreCase = true)) return value
+        val cleaned = value.substring(0, match.range.first).trim().trimEnd('，', ',', '、')
+        if (cleaned.isBlank()) return value
+        return cleaned.withSentencePunctuation()
+    }
+
+    private fun hasRoleCallPurchaseRefusal(text: String): Boolean {
+        val lower = text.lowercase()
+        return listOf(
+            "不买不买",
+            "先不买",
+            "不用买",
+            "不要买",
+            "别买了",
+            "不下单",
+            "取消采购",
+            "skip purchase",
+            "do not buy",
+            "don't buy",
+        ).any { lower.contains(it.lowercase()) } ||
+            Regex("""(^|[：:\s，,。])不买(?:不买)?(?:[。！!，,]|\s|$)""").containsMatchIn(text)
+    }
+
+    private fun String.withSentencePunctuation(): String =
+        if (lastOrNull() in setOf('。', '！', '!', '？', '?')) this else "$this。"
+
+    private val roleCallContextLeakTerms = listOf(
+        "低脂牛奶",
+        "常用洗衣液",
+        "洗衣液",
+        "水果",
+        "Kylin",
+        "PetSmart",
+        "Pet Smart",
+    )
+
+    private val leakedRoleCallContextSuffixRegex = Regex(
+        pattern = """(?:[，,、]\s*(?:低脂牛奶|常用洗衣液|洗衣液|水果|Kylin|PetSmart|Pet Smart)){2,}\s*[。.!！]?$""",
+        option = RegexOption.IGNORE_CASE,
+    )
 
     fun fallbackRoleCallReply(
         openingTurn: Boolean,
@@ -47,17 +108,25 @@ object OneHourScenarioPolicy {
             else -> "对，就这几样，麻烦你了。"
         }
 
-    fun isValidEllaRoleCallReply(
+    fun isValidRoleCallReply(
         text: String,
         openingTurn: Boolean,
     ): Boolean {
         val value = text.trim()
         if (value.isBlank()) return false
+        val bannedTemplates = listOf(
+            "你方便的话，顺路买瓶低脂牛奶和洗衣液吧。",
+            "我刚想起来家里牛奶快没了，顺路的话帮补一下。",
+        )
+        if (openingTurn && bannedTemplates.any { value == it }) return false
         val shoppingAnchors = listOf("补", "买", "采购", "低脂牛奶", "牛奶", "洗衣液", "水果", "家里")
         if (openingTurn && shoppingAnchors.none { value.contains(it) }) return false
         val offTopicAnchors = listOf("吃饭", "约饭", "最近怎么样", "见面", "聊天")
         return offTopicAnchors.none { value.contains(it) }
     }
+
+    fun callEndedEventBody(): String =
+        "通话结束，转写可用于更新当前任务。"
 
     fun config(): OneHourScenarioConfig =
         PetGroomingScenarioSpec.config().let {

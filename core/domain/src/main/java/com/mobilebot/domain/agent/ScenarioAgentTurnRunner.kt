@@ -127,6 +127,11 @@ class ScenarioAgentTurnRunner
             只有确实需要用户决策时才使用 ask_user。
             ask_user 命令必须提供 decision.text 和 decision.actions；每个 action 必须包含 label 和 key。
             用户可见文案使用中文，保持简短、真实、低打扰。
+            用户可见的 title、subtitle、summary、conversations、logs、decision.text 必须是你理解后的 Agent 表达。
+            不要把 SystemRuntime 的事件标题或正文原样搬到用户可见界面；不要用“XX 通知：”“XX 来信：”“XX 通话结束：”“收到 XX 事件：”这类 runtime 播报格式开头。
+            不要把事件改写成消息播报；要写成任务状态或 Agent 动作。
+            正确示例：“新的任务事实已整理完成，需要你确认下一步”“已从通话转写整理出待办”。
+            错误示例：“某某来信：原文内容……”“某某通话结束：通话结束，音频可用于提取待办”。
             """.trimIndent()
 
         private fun ScenarioAgentTurnInput.toPrompt(): String =

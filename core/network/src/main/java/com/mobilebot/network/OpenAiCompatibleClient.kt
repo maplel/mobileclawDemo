@@ -203,6 +203,8 @@ constructor() : LlmClient {
                 "网络连接失败：无法解析服务器地址。请检查网络连接后重试。\n(DNS resolution failed: ${e.message})"
             msg.contains("timeout") ->
                 "网络连接超时：服务器响应时间过长。请稍后重试。\n(Connection timed out: ${e.message})"
+            msg.contains("hostname") && msg.contains("not verified") ->
+                "网络连接失败：服务端证书与接口域名不匹配。请检查 Base URL 是否为服务商的官方兼容接口。\n(TLS hostname verification failed: ${e.message})"
             msg.contains("connection refused") || msg.contains("failed to connect") ->
                 "无法连接到服务器。请检查网络设置后重试。\n(Connection failed: ${e.message})"
             else -> e.message ?: "网络请求失败"

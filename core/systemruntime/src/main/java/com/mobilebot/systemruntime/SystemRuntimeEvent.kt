@@ -50,6 +50,7 @@ data class CallEndedEvent(
     val contact: String,
     val audioRef: String,
     val callSessionId: String? = null,
+    val transcript: String? = null,
 ) : SystemRuntimeEvent
 
 data class ReminderFiredEvent(

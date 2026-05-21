@@ -55,14 +55,29 @@ class UserSettingsRepositoryImpl
         override suspend fun getApiKeyStoredOnly(): String = prefs.getString(KEY_API, "").orEmpty()
 
         override suspend fun getBaseUrl(): String =
-            UserSettingsResolution.resolvedBaseUrl(
-                prefs.contains(KEY_BASE),
-                prefs.getString(KEY_BASE, "").orEmpty(),
-            )
+            if (
+                !prefs.contains(KEY_BASE) &&
+                prefs.getString(KEY_API, "").orEmpty().isBlank() &&
+                devSecrets.dashscopeApiKeyFromLocalBuild().isNotBlank()
+            ) {
+                LlmEndpointDefaults.DASHSCOPE_OPENAI_COMPAT_BASE
+            } else {
+                UserSettingsResolution.resolvedBaseUrl(
+                    prefs.contains(KEY_BASE),
+                    prefs.getString(KEY_BASE, "").orEmpty(),
+                )
+            }
 
         override suspend fun getModel(): String {
             val keyPresent = prefs.contains(KEY_MODEL)
             val stored = prefs.getString(KEY_MODEL, "").orEmpty()
+            if (
+                !keyPresent &&
+                prefs.getString(KEY_API, "").orEmpty().isBlank() &&
+                devSecrets.dashscopeApiKeyFromLocalBuild().isNotBlank()
+            ) {
+                return LlmEndpointDefaults.DEFAULT_QWEN_MODEL
+            }
             val resolved = UserSettingsResolution.resolvedModel(keyPresent, stored)
             // 把旧版 glm-4.7 一次性写回，避免 UI/日志仍显示旧 id、或未走到 resolved 的构建
             if (keyPresent && stored.trim().equals("glm-4.7", ignoreCase = true)) {

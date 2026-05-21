@@ -25,7 +25,16 @@ internal object UserSettingsResolution {
         stored: String,
     ): String {
         if (!keyPresent) return LlmEndpointDefaults.GEMINI_OPENAI_COMPAT_BASE
-        return stored.trim().ifEmpty { LlmEndpointDefaults.GEMINI_OPENAI_COMPAT_BASE }
+        return normalizeBaseUrl(stored.trim().ifEmpty { LlmEndpointDefaults.GEMINI_OPENAI_COMPAT_BASE })
+    }
+
+    fun normalizeBaseUrl(value: String): String {
+        val trimmed = value.trim().trimEnd('/')
+        return if (trimmed.contains("maas.aliyuncs.com", ignoreCase = true)) {
+            LlmEndpointDefaults.DASHSCOPE_OPENAI_COMPAT_BASE
+        } else {
+            trimmed
+        }
     }
 
     fun resolvedModel(

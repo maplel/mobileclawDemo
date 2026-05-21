@@ -27,6 +27,8 @@ replay_pid*.log
 maestro_hierarchy.txt
 artifacts/device-db/
 artifacts/builds/
+artifacts/figma/
+artifacts/logs/
 artifacts/screenshots/
 artifacts/*.xml
 

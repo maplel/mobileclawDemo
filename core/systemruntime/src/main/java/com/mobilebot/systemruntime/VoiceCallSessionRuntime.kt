@@ -144,6 +144,7 @@ class VoiceCallSessionRuntime
         }
 
         private fun extractTasks(transcript: String): List<CallTranscriptTask> {
+            if (hasUserDeclinedShopping(transcript)) return emptyList()
             val items = buildList {
                 if (transcript.contains("低脂牛奶")) add("低脂牛奶")
                 if (transcript.contains("洗衣液")) add("常用洗衣液")
@@ -158,4 +159,29 @@ class VoiceCallSessionRuntime
                 ),
             )
         }
+
+        private fun hasUserDeclinedShopping(transcript: String): Boolean =
+            transcript.lineSequence()
+                .map { it.trim() }
+                .filter { it.startsWith("用户：") || it.startsWith("你：") || it.startsWith("User:", ignoreCase = true) }
+                .any { line ->
+                    val lower = line.lowercase()
+                    listOf(
+                        "不买不买",
+                        "先不买",
+                        "不买了",
+                        "别买了",
+                        "不用买了",
+                        "不用下单",
+                        "不下单",
+                        "取消采购",
+                        "先别买",
+                        "不要买了",
+                        "no need to buy",
+                        "don't buy",
+                        "do not buy",
+                        "skip purchase",
+                    ).any { lower.contains(it.lowercase()) } ||
+                        Regex("""(^|[：:\s，,。])不买(?:不买)?(?:[。！!，,]|\s|$)""").containsMatchIn(line)
+                }
     }

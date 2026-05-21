@@ -77,6 +77,7 @@ data class AgentConversationItem(
     val id: String,
     val role: AgentConversationRole,
     val text: String,
+    val actionValue: String? = null,
 )
 
 data class AgentTaskLog(
@@ -108,6 +109,11 @@ data class AgentCallTurn(
     val text: String,
 )
 
+data class AgentCallAudio(
+    val id: String,
+    val audioUrl: String,
+)
+
 data class AgentActiveCall(
     val id: String,
     val caller: String,
@@ -117,6 +123,7 @@ data class AgentActiveCall(
     val personaId: String = caller.lowercase(),
     val turns: List<AgentCallTurn> = emptyList(),
     val inputEnabled: Boolean = true,
+    val agentAudio: AgentCallAudio? = null,
 )
 
 data class AgentProgressLine(

@@ -1,7 +1,19 @@
 package com.mobilebot.chat
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaPlayer
+import android.media.MediaRecorder
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -10,13 +22,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -50,6 +66,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,28 +78,42 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.net.URL
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -155,7 +186,9 @@ fun AgentExperienceScreen(
                 onAction = viewModel::chooseDecision,
                 onSubmitText = viewModel::submitDecisionText,
                 onDismissNotification = viewModel::dismissSystemNotification,
+                onDeclineIncomingCall = viewModel::declineSystemNotification,
                 onSubmitCallText = viewModel::submitCallUserTurn,
+                onSubmitCallVoice = viewModel::submitCallVoiceTurn,
                 onHangUpCall = viewModel::hangUpActiveCall,
             )
         }
@@ -177,7 +210,9 @@ private fun PhoneFlowCanvas(
     onAction: (ActionButton) -> Unit,
     onSubmitText: (String) -> Unit,
     onDismissNotification: () -> Unit,
+    onDeclineIncomingCall: () -> Unit,
     onSubmitCallText: (String) -> Unit,
+    onSubmitCallVoice: (ByteArray, String) -> Unit,
     onHangUpCall: () -> Unit,
 ) {
     Box(
@@ -186,89 +221,104 @@ private fun PhoneFlowCanvas(
             .background(AgentBlack)
             .imePadding(),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (!blueprintOpen) {
-                TimeHeader(
-                    frame = frame,
-                    onAccelerateClock = onAccelerateClock,
-                    onOpenTaskSidebar = onOpenTaskSidebar,
-                    onOpenSettings = onOpenSettings,
-                )
-            }
-            Box(modifier = Modifier.weight(1f)) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    if (frame.activeTaskId == null) {
-                        WorkbenchArea(
+        val activeCall = frame.activeCall
+        if (activeCall != null) {
+            ActiveCallOverlay(
+                frame = frame,
+                call = activeCall,
+                currentTimeText = frame.clockTimeText,
+                onOpenBlueprint = onOpenBlueprint,
+                onOpenChat = onOpenChat,
+                onSubmitTurn = onSubmitCallText,
+                onSubmitVoiceTurn = onSubmitCallVoice,
+                onHangUp = onHangUpCall,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (!blueprintOpen) {
+                    TimeHeader(
+                        frame = frame,
+                        onAccelerateClock = onAccelerateClock,
+                        onOpenTaskSidebar = onOpenTaskSidebar,
+                        onOpenSettings = onOpenSettings,
+                    )
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (frame.activeTaskId == null) {
+                            WorkbenchArea(
+                                frame = frame,
+                                onSelectTask = onSelectTask,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 28.dp)
+                                    .padding(top = 14.dp),
+                            )
+                        } else {
+                            SessionArea(
+                                frame = frame,
+                                blueprintOpen = blueprintOpen,
+                                onCollapseBlueprint = onCollapseBlueprint,
+                                onStart = onStart,
+                                onAction = onAction,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 28.dp)
+                                    .padding(top = 14.dp),
+                            )
+                        }
+                    }
+                    if (blueprintOpen) {
+                        BlueprintDeck(
                             frame = frame,
-                            onSelectTask = onSelectTask,
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 28.dp)
-                                .padding(top = 14.dp),
-                        )
-                    } else {
-                        SessionArea(
-                            frame = frame,
-                            blueprintOpen = blueprintOpen,
-                            onCollapseBlueprint = onCollapseBlueprint,
-                            onStart = onStart,
-                            onAction = onAction,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 28.dp)
-                                .padding(top = 14.dp),
+                                .align(Alignment.TopCenter)
+                                .zIndex(20f),
                         )
                     }
                 }
-                if (blueprintOpen) {
-                    BlueprintDeck(
-                        frame = frame,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .zIndex(20f),
+                TaskProgressStrip(
+                    frame = frame,
+                    onOpenBlueprint = onOpenBlueprint,
+                    modifier = Modifier
+                        .padding(horizontal = 28.dp)
+                        .padding(top = 4.dp, bottom = 2.dp),
+                )
+                InteractionDock(
+                    active = !frame.busy &&
+                        frame.hasStarted &&
+                        frame.systemNotification == null,
+                    onOpenChat = onOpenChat,
+                    onSubmitText = onSubmitText,
+                )
+            }
+
+            if (blueprintOpen) {
+                FloatingTaskMenuButton(
+                    onClick = onOpenTaskSidebar,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 20.dp, top = 24.dp)
+                        .zIndex(100f),
+                )
+            }
+            frame.systemNotification?.let { notification ->
+                if (notification.isIncomingCallLayer()) {
+                    IncomingCallOverlay(
+                        notification = notification,
+                        onAccept = onDismissNotification,
+                        onDecline = onDeclineIncomingCall,
+                        modifier = Modifier.zIndex(200f),
                     )
-                }
-                frame.activeCall?.let { activeCall ->
-                    ActiveCallOverlay(
-                        call = activeCall,
-                        currentTimeText = frame.clockTimeText,
-                        onSubmitTurn = onSubmitCallText,
-                        onHangUp = onHangUpCall,
-                        modifier = Modifier.fillMaxSize(),
+                } else {
+                    SystemNotificationOverlay(
+                        notification = notification,
+                        onDismiss = onDismissNotification,
+                        modifier = Modifier.zIndex(200f),
                     )
                 }
             }
-            TaskProgressStrip(
-                frame = frame,
-                onOpenBlueprint = onOpenBlueprint,
-                modifier = Modifier
-                    .padding(horizontal = 28.dp)
-                    .padding(top = 4.dp, bottom = 2.dp),
-            )
-            InteractionDock(
-                active = !frame.busy &&
-                    frame.hasStarted &&
-                    frame.systemNotification == null &&
-                    frame.activeCall == null,
-                onOpenChat = onOpenChat,
-                onSubmitText = onSubmitText,
-            )
-        }
-
-        frame.systemNotification?.let { notification ->
-            SystemNotificationOverlay(
-                notification = notification,
-                onDismiss = onDismissNotification,
-            )
-        }
-        if (blueprintOpen) {
-            FloatingTaskMenuButton(
-                onClick = onOpenTaskSidebar,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 20.dp, top = 24.dp)
-                    .zIndex(100f),
-            )
         }
     }
 }
@@ -373,30 +423,31 @@ private fun AiWorkFloatingButton(
                 drawContent()
                 val center = Offset(size.width / 2f, size.height / 2f)
                 val orbitRadius = size.minDimension * 0.38f
-                val baseColor = if (active) Color(0xFF68C8FF) else AgentMuted
+                val visualPhase = if (active) phase else 0f
+                val baseColor = if (active) Color(0xFF68C8FF) else Color(0xFF5F6468)
                 drawCircle(
-                    color = baseColor.copy(alpha = if (active) 0.18f else 0.06f),
-                    radius = size.minDimension * (0.42f + 0.08f * phase),
+                    color = baseColor.copy(alpha = if (active) 0.18f else 0.035f),
+                    radius = size.minDimension * (0.42f + 0.08f * visualPhase),
                     center = center,
                 )
                 drawCircle(
-                    color = baseColor.copy(alpha = if (active) 0.36f else 0.14f),
+                    color = baseColor.copy(alpha = if (active) 0.36f else 0.08f),
                     radius = orbitRadius,
                     center = center,
                     style = Stroke(width = 1.5.dp.toPx()),
                 )
-                val angle = phase * 2f * PI.toFloat()
+                val angle = visualPhase * 2f * PI.toFloat()
                 val dot = Offset(
                     x = center.x + cos(angle) * orbitRadius,
                     y = center.y + sin(angle) * orbitRadius,
                 )
                 drawCircle(
-                    color = baseColor.copy(alpha = if (active) 0.96f else 0.54f),
+                    color = baseColor.copy(alpha = if (active) 0.96f else 0.22f),
                     radius = 2.2.dp.toPx(),
                     center = dot,
                 )
                 drawCircle(
-                    color = AgentWhite.copy(alpha = if (active) 0.58f else 0.24f),
+                    color = AgentWhite.copy(alpha = if (active) 0.58f else 0.12f),
                     radius = 1.dp.toPx(),
                     center = center,
                 )
@@ -404,7 +455,10 @@ private fun AiWorkFloatingButton(
         color = AgentPanel.copy(alpha = 0.92f),
         contentColor = AgentWhite,
         shape = CircleShape,
-        border = BorderStroke(1.dp, Color(0xFF68C8FF).copy(alpha = if (active) 0.58f else 0.2f)),
+        border = BorderStroke(
+            1.dp,
+            (if (active) Color(0xFF68C8FF) else AgentMuted).copy(alpha = if (active) 0.58f else 0.10f),
+        ),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
@@ -719,7 +773,12 @@ private fun SessionArea(
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Bottom),
         ) {
             items(messages) { message ->
-                ConversationBubble(message)
+                ConversationBubble(
+                    message = message,
+                    activeActionValue = frame.activeActionValue,
+                    selectedActionValue = frame.selectedAction?.value,
+                    loading = frame.busy,
+                )
             }
             if (actions.isNotEmpty()) {
                 item {
@@ -1058,7 +1117,7 @@ private fun TaskProgressStrip(
                 overflow = TextOverflow.Ellipsis,
             )
             AiWorkFloatingButton(
-                active = frame.busy || frame.taskCards.isNotEmpty() || frame.recentSystemEvents.isNotEmpty(),
+                active = frame.busy,
                 onClick = onOpenBlueprint,
             )
         }
@@ -1256,8 +1315,205 @@ private fun InteractionDock(
 }
 
 @Composable
-private fun ConversationBubble(message: AgentConversationItem) {
+private fun CallInteractionDock(
+    active: Boolean,
+    recording: Boolean,
+    voiceStatus: String,
+    onOpenChat: () -> Unit,
+    onSubmitText: (String) -> Unit,
+    onTalkStart: () -> Unit,
+    onTalkEnd: () -> Unit,
+) {
+    var composing by rememberSaveable(active) { mutableStateOf(false) }
+    var input by rememberSaveable(active) { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(active, composing) {
+        if (active && composing) {
+            focusRequester.requestFocus()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AgentBlack)
+            .padding(start = 28.dp, end = 28.dp, top = 12.dp, bottom = 28.dp)
+            .testTag("call_interaction_area"),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (active && composing) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            val value = input.trim()
+                            if (value.isNotEmpty()) {
+                                onSubmitText(value)
+                                input = ""
+                                composing = false
+                            }
+                        },
+                    ),
+                    placeholder = { Text("Type") },
+                )
+                Button(
+                    onClick = {
+                        val value = input.trim()
+                        if (value.isNotEmpty()) {
+                            onSubmitText(value)
+                            input = ""
+                            composing = false
+                        }
+                    },
+                    enabled = input.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AgentWhite,
+                        contentColor = AgentBlack,
+                        disabledContainerColor = AgentPanel,
+                        disabledContentColor = AgentMuted,
+                    ),
+                ) {
+                    Text("Send")
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircleToolButton(enabled = false, onClick = onOpenChat) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Add",
+                        tint = AgentMuted,
+                    )
+                }
+                Surface(
+                    modifier = Modifier
+                        .height(48.dp)
+                        .weight(1f)
+                        .clickable(enabled = active && !recording) { composing = true },
+                    color = if (active && !recording) AgentPanel else AgentPanel.copy(alpha = 0.42f),
+                    shape = RoundedCornerShape(24.dp),
+                    border = if (active && !recording) BorderStroke(1.dp, AgentWhite.copy(alpha = 0.64f)) else null,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = when {
+                                recording -> "Recording"
+                                active -> "Type"
+                                else -> voiceStatus.ifBlank { "Wait" }
+                            },
+                            color = if (active || recording) AgentWhite else AgentMuted,
+                            fontSize = 12.sp,
+                            fontWeight = if (active || recording) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                HoldTalkPillButton(
+                    text = when {
+                        recording -> "松手发送"
+                        active -> "按住说话"
+                        else -> voiceStatus.toTalkButtonStatus()
+                    },
+                    enabled = active,
+                    recording = recording,
+                    onPressStart = onTalkStart,
+                    onPressEnd = onTalkEnd,
+                )
+                PillToolButton("Live", enabled = false, onClick = onOpenChat)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HoldTalkPillButton(
+    text: String,
+    enabled: Boolean,
+    recording: Boolean,
+    onPressStart: () -> Unit,
+    onPressEnd: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .width(96.dp)
+            .height(48.dp)
+            .pointerInput(enabled) {
+                detectTapGestures(
+                    onPress = {
+                        if (enabled) {
+                            onPressStart()
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                onPressEnd()
+                            }
+                        }
+                    },
+                )
+            },
+        color = when {
+            recording -> Color(0xFFE83C38)
+            enabled -> AgentPanel
+            else -> AgentPanel.copy(alpha = 0.42f)
+        },
+        shape = RoundedCornerShape(24.dp),
+        border = if (recording) BorderStroke(1.dp, AgentWhite.copy(alpha = 0.72f)) else null,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                color = if (enabled || recording) AgentWhite else AgentMuted,
+                fontSize = 11.sp,
+                fontWeight = if (enabled || recording) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private fun String.toTalkButtonStatus(): String =
+    when {
+        contains("AI") && contains("讲话") -> "AI 讲话中"
+        contains("识别") || contains("转写") -> "识别中"
+        contains("没听清") -> "再说一次"
+        contains("权限") -> "未授权"
+        contains("失败") -> "失败"
+        isBlank() -> "等待"
+        else -> "等待"
+    }
+
+@Composable
+private fun ConversationBubble(
+    message: AgentConversationItem,
+    activeActionValue: String?,
+    selectedActionValue: String?,
+    loading: Boolean,
+) {
     val isUser = message.role == AgentConversationRole.USER
+    val isActionSelection = isUser && message.actionValue != null
+    val actionLoading = isActionSelection && loading && message.actionValue == activeActionValue
+    val actionSelected = isActionSelection &&
+        (actionLoading || message.actionValue == selectedActionValue || message.actionValue == activeActionValue)
     val bubbleModifier = if (isUser) {
         Modifier
             .widthIn(max = 280.dp)
@@ -1269,6 +1525,16 @@ private fun ConversationBubble(message: AgentConversationItem) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
+        if (isActionSelection) {
+            ActionOptionBubble(
+                label = message.text,
+                selected = actionSelected,
+                loading = actionLoading,
+                enabled = false,
+                onClick = {},
+            )
+            return@Row
+        }
         Surface(
             modifier = bubbleModifier,
             color = if (isUser) AgentPanel else Color.Transparent,
@@ -1333,13 +1599,97 @@ private fun TaskLogRow(row: AgentTaskLog) {
     }
 }
 
+private fun AgentSystemNotification.isIncomingCallLayer(): Boolean =
+    callSessionId != null || actionLabel.trim() == "接听"
+
+private fun AgentSystemNotification.callerName(): String =
+    title.removeSuffix(" 来电")
+        .removeSuffix("来电")
+        .trim()
+        .ifBlank { title.ifBlank { "Unknown" } }
+
+@Composable
+private fun IncomingCallOverlay(
+    notification: AgentSystemNotification,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val caller = notification.callerName()
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CallScreenGradient)
+            .padding(horizontal = 28.dp, vertical = 24.dp)
+            .testTag("incoming_call"),
+    ) {
+        IncomingCallPhotoBackdrop()
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(72.dp))
+            Text(
+                text = caller,
+                color = AgentWhite,
+                fontSize = 42.sp,
+                lineHeight = 48.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "Incoming call",
+                color = AgentWhite.copy(alpha = 0.72f),
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.weight(1f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CallRoundControl(
+                    glyph = "☎",
+                    label = "Decline",
+                    containerColor = Color(0xFFE83C38),
+                    contentColor = AgentWhite,
+                    onClick = onDecline,
+                )
+                CallRoundControl(
+                    glyph = "☎",
+                    label = "Accept",
+                    containerColor = AgentWhite,
+                    contentColor = AgentBlack,
+                    onClick = onAccept,
+                )
+                CallRoundControl(
+                    glyph = "✦",
+                    label = "Accept with AI",
+                    containerColor = AgentWhite,
+                    contentColor = AgentBlack,
+                    onClick = onAccept,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SystemNotificationOverlay(
     notification: AgentSystemNotification,
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(AgentBlack.copy(alpha = 0.84f))
             .testTag("system_notification"),
@@ -1424,7 +1774,522 @@ private fun SystemNotificationOverlay(
 }
 
 @Composable
+private fun CallTopStatus(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 42.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+    ) {
+        Surface(
+            modifier = Modifier.size(14.dp),
+            color = Color.Transparent,
+            shape = CircleShape,
+            border = BorderStroke(1.dp, AgentWhite.copy(alpha = 0.84f)),
+        ) {}
+        Text(
+            text = text,
+            color = AgentWhite.copy(alpha = 0.78f),
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun CallCornerBadge(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.size(28.dp),
+        color = AgentWhite.copy(alpha = 0.14f),
+        contentColor = AgentWhite,
+        shape = CircleShape,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = "≋",
+                fontSize = 14.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Black,
+            )
+        }
+    }
+}
+
+@Composable
+private fun IncomingCallPhotoBackdrop() {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.call_jessica),
+            contentDescription = null,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .requiredWidth(540.dp)
+                .requiredHeight(810.dp)
+                .offset(y = (-150).dp),
+            contentScale = ContentScale.FillBounds,
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.00f to AgentBlack.copy(alpha = 0.88f),
+                            0.16f to AgentBlack.copy(alpha = 0.50f),
+                            0.44f to AgentBlack.copy(alpha = 0.06f),
+                            0.78f to Color(0xFF2A242D).copy(alpha = 0.10f),
+                            1.00f to Color(0xFFE4D7EB).copy(alpha = 0.62f),
+                        ),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+private fun ActiveCallPhotoBackdrop() {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.call_jessica),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(40.dp)
+                .alpha(0.30f),
+            contentScale = ContentScale.Crop,
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.00f to AgentBlack.copy(alpha = 0.92f),
+                            0.44f to AgentBlack.copy(alpha = 0.88f),
+                            0.76f to Color(0xFF2B252E).copy(alpha = 0.72f),
+                            1.00f to Color(0xFFE4D7EB).copy(alpha = 0.70f),
+                        ),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+private fun CallerPortraitPanel(
+    caller: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color.Transparent,
+        shape = RoundedCornerShape(36.dp),
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF1E1D22),
+                        Color(0xFF2C272F),
+                        Color(0xFFD4C6D8),
+                    ),
+                ),
+                cornerRadius = CornerRadius(36.dp.toPx(), 36.dp.toPx()),
+            )
+            drawCircle(
+                color = Color(0xFF1A171C).copy(alpha = 0.92f),
+                radius = size.minDimension * 0.34f,
+                center = Offset(size.width * 0.45f, size.height * 0.36f),
+            )
+            drawCircle(
+                color = Color(0xFF2D252E).copy(alpha = 0.82f),
+                radius = size.minDimension * 0.25f,
+                center = Offset(size.width * 0.56f, size.height * 0.42f),
+            )
+            drawCircle(
+                color = Color(0xFFE1CDBB).copy(alpha = 0.88f),
+                radius = size.minDimension * 0.19f,
+                center = Offset(size.width * 0.52f, size.height * 0.45f),
+            )
+            drawCircle(
+                color = Color(0xFF120F13).copy(alpha = 0.84f),
+                radius = size.minDimension * 0.08f,
+                center = Offset(size.width * 0.42f, size.height * 0.34f),
+            )
+            drawCircle(
+                color = Color(0xFF120F13).copy(alpha = 0.72f),
+                radius = size.minDimension * 0.07f,
+                center = Offset(size.width * 0.61f, size.height * 0.33f),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 32.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Text(
+                text = caller.take(1).uppercase(),
+                color = AgentWhite.copy(alpha = 0.72f),
+                fontSize = 52.sp,
+                lineHeight = 58.sp,
+                fontWeight = FontWeight.Black,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CallRoundControl(
+    glyph: String,
+    label: String,
+    containerColor: Color,
+    contentColor: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Surface(
+            modifier = Modifier
+                .size(72.dp)
+                .clickable(enabled = enabled, onClick = onClick),
+            color = containerColor.copy(alpha = if (enabled) 1f else 0.38f),
+            contentColor = contentColor,
+            shape = CircleShape,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = glyph,
+                    color = contentColor.copy(alpha = if (enabled) 1f else 0.52f),
+                    fontSize = 29.sp,
+                    lineHeight = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        Text(
+            text = label,
+            color = AgentWhite.copy(alpha = if (enabled) 0.72f else 0.34f),
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun CallBottomNav() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf("+", "▧", "○", "I", "≋").forEach { item ->
+            Text(
+                text = item,
+                color = AgentWhite.copy(alpha = 0.48f),
+                fontSize = 22.sp,
+                lineHeight = 24.sp,
+                fontWeight = FontWeight.Light,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ActiveCallOverlay(
+    frame: AgentExperienceFrame,
+    call: AgentActiveCall,
+    currentTimeText: String,
+    onOpenBlueprint: () -> Unit,
+    onOpenChat: () -> Unit,
+    onSubmitTurn: (String) -> Unit,
+    onSubmitVoiceTurn: (ByteArray, String) -> Unit,
+    onHangUp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var voiceStatus by rememberSaveable(call.id) { mutableStateOf("点按说话") }
+    var isRecording by remember { mutableStateOf(false) }
+    var isPlayingAgentAudio by remember { mutableStateOf(false) }
+    var cachedAgentAudioFile by remember(call.id) { mutableStateOf<File?>(null) }
+    val recorder = remember { HalfDuplexWavRecorder() }
+    val mediaPlayer = remember { MediaPlayer() }
+    val recordAudioLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted && recorder.start()) {
+            isRecording = true
+            voiceStatus = "正在听"
+        } else {
+            voiceStatus = if (granted) "录音失败" else "麦克风权限未授权"
+        }
+    }
+    val pulse by rememberInfiniteTransition(label = "call_pulse").animateFloat(
+        initialValue = 0.42f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+        ),
+        label = "call_pulse_alpha",
+    )
+
+    DisposableEffect(recorder) {
+        onDispose { recorder.cancel() }
+    }
+
+    DisposableEffect(mediaPlayer) {
+        onDispose {
+            runCatching { mediaPlayer.stop() }
+            mediaPlayer.release()
+            cachedAgentAudioFile?.delete()
+        }
+    }
+
+    LaunchedEffect(call.agentAudio?.id) {
+        val audio = call.agentAudio ?: return@LaunchedEffect
+        runCatching {
+            cachedAgentAudioFile?.delete()
+            val cachedAudio = cacheAgentCallAudio(context, audio)
+            cachedAgentAudioFile = cachedAudio
+            mediaPlayer.reset()
+            mediaPlayer.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .build(),
+            )
+            FileInputStream(cachedAudio).use { input ->
+                mediaPlayer.setDataSource(input.fd)
+            }
+            mediaPlayer.setOnPreparedListener {
+                isPlayingAgentAudio = true
+                voiceStatus = "AI 讲话中"
+                it.start()
+            }
+            mediaPlayer.setOnCompletionListener {
+                isPlayingAgentAudio = false
+                voiceStatus = "等待你说话"
+                cachedAudio.delete()
+                if (cachedAgentAudioFile == cachedAudio) {
+                    cachedAgentAudioFile = null
+                }
+            }
+            mediaPlayer.setOnErrorListener { _, what, extra ->
+                Log.e("AgentExperienceScreen", "Call audio playback failed: what=$what extra=$extra")
+                isPlayingAgentAudio = false
+                voiceStatus = "语音播放失败"
+                cachedAudio.delete()
+                if (cachedAgentAudioFile == cachedAudio) {
+                    cachedAgentAudioFile = null
+                }
+                true
+            }
+            mediaPlayer.prepareAsync()
+        }.onFailure {
+            Log.e("AgentExperienceScreen", "Call audio playback setup failed", it)
+            isPlayingAgentAudio = false
+            voiceStatus = "语音播放失败"
+        }
+    }
+
+    fun startVoiceTurn() {
+        if (!call.inputEnabled || isPlayingAgentAudio) {
+            voiceStatus = if (isPlayingAgentAudio) "先停止 AI 或等它说完" else "等待对方回应"
+            return
+        }
+        if (!hasRecordAudioPermission(context)) {
+            recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        if (recorder.start()) {
+            isRecording = true
+            voiceStatus = "正在听"
+        } else {
+            voiceStatus = "录音失败"
+        }
+    }
+
+    fun stopVoiceTurn() {
+        if (!isRecording) return
+        val wav = recorder.stopAsWav()
+        isRecording = false
+        if (wav == null || wav.size < MIN_VOICE_TURN_WAV_BYTES) {
+            voiceStatus = "没有录到声音"
+            return
+        }
+        voiceStatus = "正在识别"
+        onSubmitVoiceTurn(wav, "audio/wav")
+    }
+
+    fun stopAgentAudio() {
+        runCatching { mediaPlayer.stop() }
+        isPlayingAgentAudio = false
+        voiceStatus = "AI 已停止"
+    }
+
+    fun hangUp() {
+        recorder.cancel()
+        runCatching { mediaPlayer.stop() }
+        isRecording = false
+        isPlayingAgentAudio = false
+        onHangUp()
+    }
+
+    val latestAgentText = call.turns
+        .lastOrNull { it.speaker == call.caller }
+        ?.text
+        .orEmpty()
+    val latestUserText = call.turns
+        .lastOrNull { it.speaker != call.caller }
+        ?.text
+
+    Box(
+        modifier = modifier
+            .background(CallScreenGradient)
+            .testTag("active_call"),
+    ) {
+        ActiveCallPhotoBackdrop()
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp, vertical = 24.dp)
+                .padding(bottom = 150.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(72.dp))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = call.caller,
+                    color = AgentWhite,
+                    fontSize = 42.sp,
+                    lineHeight = 48.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Spacer(Modifier.height(72.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                if (latestAgentText.isNotBlank()) {
+                    Text(
+                        text = latestAgentText,
+                        modifier = Modifier.fillMaxWidth(),
+                        color = AgentWhite.copy(alpha = 0.88f),
+                        fontSize = 14.sp,
+                        lineHeight = 19.sp,
+                        fontStyle = FontStyle.Italic,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Start,
+                        maxLines = 9,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                latestUserText?.takeIf { it.isNotBlank() }?.let { userText ->
+                    Surface(
+                        modifier = Modifier.align(Alignment.End),
+                        color = AgentWhite.copy(alpha = 0.12f),
+                        contentColor = AgentWhite,
+                        shape = RoundedCornerShape(24.dp),
+                    ) {
+                        Text(
+                            text = userText,
+                            modifier = Modifier
+                                .widthIn(max = 300.dp)
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                            color = AgentWhite.copy(alpha = 0.92f),
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
+                            fontStyle = FontStyle.Italic,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.End,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CallRoundControl(
+                        glyph = "☎",
+                        label = "Hang up",
+                        containerColor = Color(0xFFE83C38),
+                        contentColor = AgentWhite,
+                        onClick = ::hangUp,
+                    )
+                    CallRoundControl(
+                        glyph = "×",
+                        label = "Stop AI",
+                        containerColor = AgentWhite,
+                        contentColor = AgentBlack,
+                        enabled = true,
+                        onClick = ::stopAgentAudio,
+                    )
+                }
+            }
+        }
+        Column(
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            TaskProgressStrip(
+                frame = frame,
+                onOpenBlueprint = onOpenBlueprint,
+                modifier = Modifier
+                    .padding(horizontal = 28.dp)
+                    .padding(top = 4.dp, bottom = 2.dp),
+            )
+            CallInteractionDock(
+                active = call.inputEnabled && !isPlayingAgentAudio,
+                recording = isRecording,
+                voiceStatus = voiceStatus,
+                onOpenChat = onOpenChat,
+                onSubmitText = onSubmitTurn,
+                onTalkStart = ::startVoiceTurn,
+                onTalkEnd = ::stopVoiceTurn,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActiveCallOverlayLegacy(
     call: AgentActiveCall,
     currentTimeText: String,
     onSubmitTurn: (String) -> Unit,
@@ -1587,6 +2452,153 @@ private fun ActiveCallOverlay(
         }
     }
 }
+
+private fun hasRecordAudioPermission(context: Context): Boolean =
+    context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+private suspend fun cacheAgentCallAudio(
+    context: Context,
+    audio: AgentCallAudio,
+): File =
+    withContext(Dispatchers.IO) {
+        val target = File.createTempFile(audio.id, ".wav", context.cacheDir)
+        runCatching {
+            URL(audio.audioUrl.toHttpsUrl()).openStream().use { input ->
+                FileOutputStream(target).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            target
+        }.getOrElse {
+            target.delete()
+            throw it
+        }
+    }
+
+private fun String.toHttpsUrl(): String =
+    if (startsWith("http://", ignoreCase = true)) {
+        "https://" + drop("http://".length)
+    } else {
+        this
+    }
+
+private class HalfDuplexWavRecorder {
+    private var audioRecord: AudioRecord? = null
+    private var worker: Thread? = null
+    private var recording = false
+    private var output = ByteArrayOutputStream()
+
+    fun start(): Boolean {
+        cancel()
+        return runCatching {
+            val minBuffer = AudioRecord.getMinBufferSize(
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+            )
+            if (minBuffer <= 0) return false
+            val bufferSize = minBuffer.coerceAtLeast(SAMPLE_RATE)
+            val record = AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                bufferSize,
+            )
+            if (record.state != AudioRecord.STATE_INITIALIZED) {
+                record.release()
+                return false
+            }
+            output = ByteArrayOutputStream()
+            recording = true
+            audioRecord = record
+            record.startRecording()
+            worker = Thread {
+                val buffer = ByteArray(bufferSize)
+                while (recording) {
+                    val read = record.read(buffer, 0, buffer.size)
+                    if (read > 0) {
+                        synchronized(output) {
+                            output.write(buffer, 0, read)
+                        }
+                    }
+                }
+            }.apply {
+                name = "call-turn-recorder"
+                start()
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    fun stopAsWav(): ByteArray? {
+        if (!recording && audioRecord == null) return null
+        recording = false
+        runCatching { worker?.join(500) }
+        val record = audioRecord
+        audioRecord = null
+        worker = null
+        runCatching { record?.stop() }
+        runCatching { record?.release() }
+        val pcm = synchronized(output) { output.toByteArray() }
+        output = ByteArrayOutputStream()
+        if (pcm.isEmpty()) return null
+        return pcm16ToWav(pcm, SAMPLE_RATE)
+    }
+
+    fun cancel() {
+        recording = false
+        runCatching { worker?.join(200) }
+        runCatching { audioRecord?.stop() }
+        runCatching { audioRecord?.release() }
+        audioRecord = null
+        worker = null
+        output = ByteArrayOutputStream()
+    }
+
+    private companion object {
+        const val SAMPLE_RATE = 16_000
+    }
+}
+
+private fun pcm16ToWav(
+    pcm: ByteArray,
+    sampleRate: Int,
+): ByteArray {
+    val output = ByteArrayOutputStream(pcm.size + WAV_HEADER_SIZE)
+    val byteRate = sampleRate * 2
+    fun writeAscii(value: String) {
+        output.write(value.toByteArray(Charsets.US_ASCII))
+    }
+    fun writeIntLe(value: Int) {
+        output.write(value and 0xff)
+        output.write((value shr 8) and 0xff)
+        output.write((value shr 16) and 0xff)
+        output.write((value shr 24) and 0xff)
+    }
+    fun writeShortLe(value: Int) {
+        output.write(value and 0xff)
+        output.write((value shr 8) and 0xff)
+    }
+    writeAscii("RIFF")
+    writeIntLe(36 + pcm.size)
+    writeAscii("WAVE")
+    writeAscii("fmt ")
+    writeIntLe(16)
+    writeShortLe(1)
+    writeShortLe(1)
+    writeIntLe(sampleRate)
+    writeIntLe(byteRate)
+    writeShortLe(2)
+    writeShortLe(16)
+    writeAscii("data")
+    writeIntLe(pcm.size)
+    output.write(pcm)
+    return output.toByteArray()
+}
+
+private const val WAV_HEADER_SIZE = 44
+private const val MIN_VOICE_TURN_WAV_BYTES = WAV_HEADER_SIZE + 1600
 
 @Composable
 private fun CallControlChip(
@@ -1809,7 +2821,8 @@ private fun PinIndicator(
 private fun conversationActions(frame: AgentExperienceFrame): List<ActionButton> =
     when {
         frame.decisionPrompt != null -> frame.decisionPrompt.actions
-        frame.selectedAction != null -> listOf(frame.selectedAction)
+        frame.selectedAction != null &&
+            frame.conversationItems.none { it.actionValue == frame.selectedAction.value } -> listOf(frame.selectedAction)
         frame.error != null -> listOf(ActionButton("重试", "Retry"))
         else -> emptyList()
     }
@@ -1820,4 +2833,12 @@ private val AgentPanelActive = Color(0xFF2A2A2A)
 private val BlueprintGray = Color(0xFF545454)
 private val AgentMuted = Color(0xFFA8A8A8)
 private val AgentWhite = Color.White
+private val CallScreenGradient = Brush.verticalGradient(
+    listOf(
+        Color(0xFF050505),
+        Color(0xFF09080B),
+        Color(0xFF171218),
+        Color(0xFFC7BCCB),
+    ),
+)
 private const val SYSTEM_NOTIFICATION_AUTO_DISMISS_MS = 20_000L

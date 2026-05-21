@@ -16,4 +16,12 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRoleCallModel(impl: QwenRoleCallModel): RoleCallModel = impl
+
+    @Provides
+    @Singleton
+    fun provideSpeechRecognizer(impl: DashScopeSpeechRecognizer): SpeechRecognizer = impl
+
+    @Provides
+    @Singleton
+    fun provideSpeechSynthesizer(impl: DashScopeSpeechSynthesizer): SpeechSynthesizer = impl
 }

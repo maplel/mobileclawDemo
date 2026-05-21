@@ -36,6 +36,7 @@ class OneHourScenarioFlowTest {
 
         assertEquals("pet-grooming-live", createTask.seed.taskId)
         assertEquals(ScenarioSurfaceStatus.BLOCKED, createTask.seed.status)
+        assertTrue(createTask.seed.conversations.isEmpty())
         assertEquals(listOf("可以", "不改了"), createTask.seed.decision?.actions?.map { it.label })
         assertTrue(createTask.seed.logs.first().text.contains("PetSmart"))
     }
@@ -134,7 +135,7 @@ class OneHourScenarioFlowTest {
     }
 
     @Test
-    fun localUserDecisionCommandsAcceptPetSlotWithoutPlannerRewrite() {
+    fun localUserDecisionCommandsAcceptPetSlotWithoutUserFacingPlannerText() {
         val flow = OneHourScenarioFlow()
         val commands = flow.userDecisionCommands(
             taskId = "pet-grooming-live",
@@ -145,7 +146,7 @@ class OneHourScenarioFlowTest {
 
         assertTrue(flow.isPetCareAccepted())
         assertEquals(null, update.update.decision)
-        assertTrue(update.update.conversations.any { it.text.contains("联系了司机老陈") })
+        assertTrue(update.update.conversations.isEmpty())
         assertTrue(commands.any { it is ScenarioAgentCommand.SendSms && it.to == "PetSmart" })
         assertTrue(commands.any { it is ScenarioAgentCommand.SendSms && it.to == "Driver" })
         assertTrue(commands.any { it is ScenarioAgentCommand.WaitSms && it.contact == "Driver" })
@@ -280,10 +281,18 @@ class OneHourScenarioFlowTest {
         val policy = JSONObject(OneHourScenarioFlow.plannerPolicyJson(event))
 
         assertEquals("pet-grooming-live", policy.getJSONArray("taskIds").getString(0))
+        assertTrue(policy.getString("taskPlanningGoal").contains("Create the task if it does not exist"))
         assertEquals("可以", policy.getJSONArray("visibleDecisionActions").getJSONObject(0).getString("label"))
         assertTrue(policy.getJSONObject("decisionPolicy").getBoolean("visibleDecisionActionsRequired"))
+        assertTrue(policy.getJSONObject("decisionPolicy").getJSONArray("rules").toString().contains("AGENT conversation"))
         assertEquals(0, policy.getJSONArray("authorizedSms").length())
         assertEquals(0, policy.getJSONArray("authorizedReminders").length())
+        val visibleTextPolicy = policy.getJSONObject("visibleTextPolicy")
+        assertEquals(
+            "14:00 洗护档期空出来了，需要你确认是否调整 Kylin 的预约",
+            visibleTextPolicy.getString("preferredUserVisibleSummary"),
+        )
+        assertTrue(visibleTextPolicy.getJSONArray("forbiddenVisibleFragments").toString().contains("客人计划有变"))
         val participantPolicy = policy.getJSONObject("participantPolicy")
         assertEquals(listOf("PS"), labels(policy.getJSONArray("requiredParticipants")))
         assertEquals(listOf("PS"), labels(participantPolicy.getJSONArray("currentFactParticipants")))
@@ -296,6 +305,177 @@ class OneHourScenarioFlowTest {
                     .getJSONArray("baselineParticipants"),
             ),
         )
+    }
+
+    @Test
+    fun visibleDecisionSystemEventsAreOwnedByPlannerSurface() {
+        assertTrue(
+            OneHourScenarioFlow.plannerOwnsVisibleDecisionSurface(
+                sms(
+                    id = "petsmart-open-slot",
+                    source = "PetSmart",
+                    body = "14:00 客人计划有变，现在可以安排 Kylin 洗澡和去浮毛。",
+                ),
+            ),
+        )
+        assertFalse(
+            OneHourScenarioFlow.plannerOwnsVisibleDecisionSurface(
+                sms(
+                    id = "driver-1320-confirm",
+                    source = "Driver",
+                    body = "好的，我 13:20 到楼下等 Kylin。",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun authorizedSystemTaskSurfacesAreOwnedByPlanner() {
+        assertTrue(
+            OneHourScenarioFlow.plannerOwnsSystemTaskSurface(
+                sms(
+                    id = "driver-1320-confirm",
+                    source = "Driver",
+                    body = "好的，我 13:20 到楼下等 Kylin。",
+                ),
+            ),
+        )
+        assertFalse(
+            OneHourScenarioFlow.plannerOwnsSystemTaskSurface(
+                sms(
+                    id = "unknown-sms",
+                    source = "Driver",
+                    body = "OK",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun callEndedTaskSurfaceIsPlannerOwnedForTranscriptNormalization() {
+        assertTrue(
+            OneHourScenarioFlow.plannerOwnsSystemTaskSurface(
+                CallEndedEvent(
+                    id = "ella-call-ended",
+                    occurredAt = now.withHour(13).withMinute(11),
+                    source = "Ella",
+                    title = "Ella 通话结束",
+                    body = "通话结束，音频可用于提取家庭采购待办。",
+                    contact = "Ella",
+                    audioRef = "runtime-call:ella-call",
+                    callSessionId = "ella-call",
+                    transcript = """
+                        Ella：你方便的话，顺路买瓶低脂牛奶和洗衣液吧。
+                        用户：不买不买。
+                    """.trimIndent(),
+                ),
+            ),
+        )
+        assertTrue(
+            OneHourScenarioFlow.plannerOwnsSystemTaskSurface(
+                CallEndedEvent(
+                    id = "ella-call-ended",
+                    occurredAt = now.withHour(13).withMinute(11),
+                    source = "Ella",
+                    title = "Ella 通话结束",
+                    body = "通话结束，转写可用于更新当前任务。",
+                    contact = "Ella",
+                    audioRef = "runtime-call:ella-call",
+                    callSessionId = "ella-call",
+                    transcript = """
+                        Ella：家里低脂牛奶和洗衣液快没了，顺路帮忙买一下。
+                        用户：我不想买。
+                        Ella：好的，那这次先不买。
+                    """.trimIndent(),
+                ),
+            ),
+        )
+        assertTrue(
+            OneHourScenarioFlow.plannerOwnsSystemTaskSurface(
+                CallEndedEvent(
+                    id = "ella-call-ended",
+                    occurredAt = now.withHour(13).withMinute(11),
+                    source = "Ella",
+                    title = "Ella 通话结束",
+                    body = "通话结束，音频可用于提取家庭采购待办。",
+                    contact = "Ella",
+                    audioRef = "runtime-call:ella-call",
+                    callSessionId = "ella-call",
+                    transcript = "Ella：你方便的话，顺路买瓶低脂牛奶和洗衣液吧。",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun healthSupplyTaskSurfaceStaysLocal() {
+        val event = notification(
+            id = "pharmacy-restock",
+            title = "美团买药通知",
+            body = "美团买药通知：家中常备的益生菌已补货，支持快速配送。",
+        )
+        val flow = OneHourScenarioFlow()
+        val seed = flow.handle(event).single() as OneHourFlowEffect.CreateTask
+
+        assertFalse(OneHourScenarioFlow.plannerOwnsSystemTaskSurface(event))
+        assertTrue(OneHourScenarioFlow.commandAuthorizationForEvent(event).taskIds.isEmpty())
+        assertEquals("健康补给", seed.seed.title)
+        assertTrue(seed.seed.conversations.single().text.contains("常买的益生菌补货了"))
+        assertFalse(seed.seed.conversations.single().text.contains("美团买药通知"))
+    }
+
+    @Test
+    fun coldchainTaskSurfaceStaysLocal() {
+        val event = notification(
+            id = "courier-coldchain-arriving",
+            title = "冷链即将到达",
+            body = "顺丰冷链通知包裹即将送达，需尽快处理。",
+        )
+        val flow = OneHourScenarioFlow()
+        val seed = flow.handle(event).single() as OneHourFlowEffect.CreateTask
+
+        assertFalse(OneHourScenarioFlow.plannerOwnsSystemTaskSurface(event))
+        assertTrue(OneHourScenarioFlow.commandAuthorizationForEvent(event).taskIds.isEmpty())
+        assertEquals("冷链收货", seed.seed.title)
+        assertTrue(seed.seed.conversations.single().text.contains("顺丰冷链预计 13:45 到小区"))
+        assertFalse(seed.seed.conversations.single().text.contains("顺丰冷链通知"))
+    }
+
+    @Test
+    fun petServiceTimingTaskSurfaceStaysLocal() {
+        val started = sms(
+            id = "petsmart-service-started",
+            source = "PetSmart",
+            body = "PetSmart 发来 Kylin 到店和开洗确认。",
+        )
+        val progress = sms(
+            id = "petsmart-service-progress",
+            source = "PetSmart",
+            body = "PetSmart 发来洗护进度更新。",
+        )
+
+        assertFalse(OneHourScenarioFlow.plannerOwnsSystemTaskSurface(started))
+        assertFalse(OneHourScenarioFlow.plannerOwnsSystemTaskSurface(progress))
+        assertTrue(OneHourScenarioFlow.commandAuthorizationForEvent(started).taskIds.isEmpty())
+        assertTrue(OneHourScenarioFlow.commandAuthorizationForEvent(progress).taskIds.isEmpty())
+    }
+
+    @Test
+    fun driverConfirmationPlannerPolicyRequiresPlannerWrittenReminderUpdate() {
+        val policy = JSONObject(
+            OneHourScenarioFlow.plannerPolicyJson(
+                sms(
+                    id = "driver-1320-confirm",
+                    source = "Driver",
+                    body = "OK，13:20 到楼下。",
+                ),
+            ),
+        )
+        val protocol = policy.getJSONObject("petDriverConfirmationProtocol")
+
+        assertEquals("2027-04-25T13:20:00", protocol.getString("reminderScheduledFor"))
+        assertTrue(protocol.getJSONArray("requiredCommandOrder").toString().contains("create_reminder"))
+        assertTrue(protocol.getJSONArray("rules").toString().contains("Do not copy deterministic reference wording"))
     }
 
     @Test
@@ -317,6 +497,29 @@ class OneHourScenarioFlowTest {
         assertTrue(policy.getString("taskPlanningGoal").contains("family shopping"))
         assertTrue(policy.getString("currentObservedContext").contains("低脂牛奶"))
         assertTrue(policy.getString("currentObservedContext").contains("常用洗衣液"))
+        assertTrue(policy.getJSONArray("rules").toString().contains("include one concise AGENT conversation or summary"))
+        assertTrue(policy.getJSONArray("rules").toString().contains("never expose eventFact.title/body verbatim"))
+        assertTrue(policy.getJSONArray("rules").toString().contains("visibleTextPolicy"))
+        val visibleTextPolicy = policy.getJSONObject("visibleTextPolicy")
+        assertEquals("根据 Ella 电话整理家庭采购状态", visibleTextPolicy.getString("preferredUserVisibleSummary"))
+        assertEquals(
+            "通话中已确认暂不采购",
+            visibleTextPolicy.getJSONObject("conditionalSummaries").getString("declined"),
+        )
+        val transcriptPolicy = policy.getJSONObject("familyShoppingCallTranscriptPolicy")
+        assertTrue(transcriptPolicy.getBoolean("normalizationRequired"))
+        assertEquals("purchaseDisposition", transcriptPolicy.getString("normalizeField"))
+        assertTrue(transcriptPolicy.getString("declinedMeaning").contains("do not want to buy"))
+        val declinedCommand = transcriptPolicy
+            .getJSONObject("requiredCommandsByDisposition")
+            .getJSONObject("declined")
+        assertEquals("DONE", declinedCommand.getString("status"))
+        assertEquals("omit", declinedCommand.getString("decision"))
+        assertTrue(declinedCommand.getJSONArray("forbidden").toString().contains("BLOCKED"))
+        assertTrue(visibleTextPolicy.getJSONArray("forbiddenVisibleFragments").toString().contains("音频可用于提取"))
+        assertTrue(policy.getJSONArray("rules").toString().contains("PetSmart 来信"))
+        assertTrue(policy.getJSONArray("rules").toString().contains("Ella 通话结束"))
+        assertTrue(policy.getJSONArray("rules").toString().contains("familyShoppingCallTranscriptPolicy"))
         assertFalse(policy.toString().contains("ella-call-ended"))
     }
 
@@ -339,18 +542,249 @@ class OneHourScenarioFlowTest {
     }
 
     @Test
+    fun callEndedWithRuntimeTranscriptCreatesTaskFromRuntimeTranscript() {
+        val transcriptText = "Ella：麻烦只买低脂牛奶，猫粮不用买，明天上午送也行。"
+        val effects = OneHourScenarioFlow().handle(
+            CallEndedEvent(
+                id = "ella-call-ended",
+                occurredAt = now.withHour(13).withMinute(11),
+                source = "Ella",
+                title = "Ella 通话结束",
+                body = "通话结束，音频可用于提取家庭采购待办。",
+                contact = "Ella",
+                audioRef = "runtime-call:ella-call",
+                callSessionId = "ella-call",
+                transcript = transcriptText,
+            ),
+        )
+        val familyTask = effects.single { it is OneHourFlowEffect.CreateTask } as OneHourFlowEffect.CreateTask
+        val conversationText = familyTask.seed.conversations.joinToString(" ") { it.text }
+        val logText = familyTask.seed.logs.joinToString(" ") { it.text }
+
+        assertTrue(conversationText.contains("家庭采购任务"))
+        assertFalse(conversationText.contains(transcriptText))
+        assertFalse(conversationText.contains("通话转写"))
+        assertTrue(logText.contains("低脂牛奶"))
+        assertTrue(logText.contains("猫粮"))
+        assertTrue(logText.contains("明天上午"))
+        assertFalse(conversationText.contains("常用洗衣液"))
+        assertFalse(logText.contains("常用洗衣液"))
+    }
+
+    @Test
+    fun callEndedDoesNotExposeRoleCallTranscriptAsConversationBubble() {
+        val transcriptText = """
+            Ella：家里要补点东西，低脂牛奶和洗衣液先买，水果顺路再买。
+            用户：你在说什么？
+            Ella：我刚才说要买低脂牛奶和洗衣液，水果顺路再买。
+            用户：我身上钱不够。
+            Ella：那我先买牛奶和洗衣液，水果下次再买。
+            用户：你买还是我买啊？
+            Ella：我买，你别买了。
+            用户：好，拜拜。
+            Ella：好的，拜拜！
+        """.trimIndent()
+        val effects = OneHourScenarioFlow().handle(
+            CallEndedEvent(
+                id = "ella-call-ended",
+                occurredAt = now.withHour(13).withMinute(11),
+                source = "Ella",
+                title = "Ella 通话结束",
+                body = "通话结束，音频可用于提取家庭采购待办。",
+                contact = "Ella",
+                audioRef = "runtime-call:ella-call",
+                callSessionId = "ella-call",
+                transcript = transcriptText,
+            ),
+        )
+        val familyTask = effects.single { it is OneHourFlowEffect.CreateTask } as OneHourFlowEffect.CreateTask
+        val conversationText = familyTask.seed.conversations.joinToString(" ") { it.text }
+        val logText = familyTask.seed.logs.joinToString(" ") { it.text }
+
+        assertTrue(conversationText.contains("家庭采购任务"))
+        assertFalse(conversationText.contains("通话转写"))
+        assertFalse(conversationText.contains("用户："))
+        assertFalse(conversationText.contains("Ella："))
+        assertFalse(conversationText.contains("我身上钱不够"))
+        assertTrue(logText.contains("低脂牛奶"))
+        assertTrue(logText.contains("常用洗衣液"))
+    }
+
+    @Test
+    fun callEndedWithExplicitPurchaseRefusalHasLocalFallbackButPlannerStillOwnsSurface() {
+        val flow = OneHourScenarioFlow()
+        val transcriptText = """
+            Ella：你方便的话，顺路买瓶低脂牛奶和洗衣液吧。
+            用户：不买不买。
+            Ella：那不买了，辛苦你啦。
+        """.trimIndent()
+        val event = CallEndedEvent(
+            id = "ella-call-ended",
+            occurredAt = now.withHour(13).withMinute(11),
+            source = "Ella",
+            title = "Ella 通话结束",
+            body = "通话结束，音频可用于提取家庭采购待办。",
+            contact = "Ella",
+            audioRef = "runtime-call:ella-call",
+            callSessionId = "ella-call",
+            transcript = transcriptText,
+        )
+        val effects = flow.handle(event)
+        val familyTask = effects.single { it is OneHourFlowEffect.CreateTask } as OneHourFlowEffect.CreateTask
+
+        assertTrue(OneHourScenarioFlow.plannerOwnsSystemTaskSurface(event))
+        assertEquals(ScenarioSurfaceStatus.DONE, familyTask.seed.status)
+        assertEquals("通话中已确认暂不采购", familyTask.seed.subtitle)
+        assertTrue(familyTask.seed.conversations.single().text.contains("不下单"))
+        assertEquals(null, familyTask.seed.decision)
+        assertTrue(
+            flow.shouldSuppressPlannerForEvent(
+                sms("ella-shopping-followup", "Ella", "牛奶和洗衣液优先，水果顺路再买。"),
+            ),
+        )
+        assertTrue(
+            flow.shouldSuppressPlannerForEvent(
+                notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"),
+            ),
+        )
+        assertTrue(
+            flow.handle(sms("ella-shopping-followup", "Ella", "牛奶和洗衣液优先，水果顺路再买。")).isEmpty(),
+        )
+        assertTrue(
+            flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。")).isEmpty(),
+        )
+        assertTrue(
+            flow.handle(notification("market-order-locked", "超市订单锁定", "低脂牛奶和洗衣液已锁定。")).isEmpty(),
+        )
+    }
+
+    @Test
+    fun callEndedSemanticPurchaseRefusalIsHandledByPlannerNormalization() {
+        val flow = OneHourScenarioFlow()
+        val event = CallEndedEvent(
+            id = "ella-call-ended",
+            occurredAt = now.withHour(13).withMinute(11),
+            source = "Ella",
+            title = "Ella 通话结束",
+            body = "通话结束，音频可用于提取家庭采购待办。",
+            contact = "Ella",
+            audioRef = "runtime-call:ella-call",
+            callSessionId = "ella-call",
+            transcript = """
+                Ella：你方便的话，顺路买瓶低脂牛奶和洗衣液吧。
+                用户：我不想买。
+                Ella：那不买了，辛苦你啦。
+            """.trimIndent(),
+        )
+
+        assertTrue(OneHourScenarioFlow.plannerOwnsSystemTaskSurface(event))
+        val policy = JSONObject(OneHourScenarioFlow.plannerPolicyJson(event))
+        val declinedCommand = policy
+            .getJSONObject("familyShoppingCallTranscriptPolicy")
+            .getJSONObject("requiredCommandsByDisposition")
+            .getJSONObject("declined")
+
+        assertEquals("DONE", declinedCommand.getString("status"))
+        assertTrue(
+            policy.getJSONObject("familyShoppingCallTranscriptPolicy")
+                .getJSONArray("rules")
+                .toString()
+                .contains("does not want to buy"),
+        )
+
+        flow.handle(event)
+        flow.updateRuntimeStateFromPlannerCommands(
+            listOf(
+                ScenarioAgentCommand.UpdateTask(FamilyShoppingTaskSurface.purchaseSkipped("我不想买")),
+            ),
+        )
+
+        assertTrue(
+            flow.shouldSuppressPlannerForEvent(
+                sms("ella-shopping-followup", "Ella", "牛奶和洗衣液优先，水果顺路再买。"),
+            ),
+        )
+        assertTrue(
+            flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"))
+                .isEmpty(),
+        )
+    }
+
+    @Test
+    fun callEndedPlannerPolicyUsesRuntimeTranscriptWhenProvided() {
+        val event = CallEndedEvent(
+            id = "ella-call-ended",
+            occurredAt = now.withHour(13).withMinute(11),
+            source = "Ella",
+            title = "Ella 通话结束",
+            body = "通话结束，音频可用于提取家庭采购待办。",
+            contact = "Ella",
+            audioRef = "runtime-call:ella-call",
+            callSessionId = "ella-call",
+            transcript = "Ella：帮我买鸡蛋和咖啡，今晚送。",
+        )
+        val context = JSONObject(OneHourScenarioFlow.plannerPolicyJson(event))
+            .getString("currentObservedContext")
+
+        assertTrue(context.contains("鸡蛋"))
+        assertTrue(context.contains("咖啡"))
+        assertTrue(context.contains("今晚"))
+        assertFalse(context.contains("常用洗衣液"))
+    }
+
+    @Test
     fun ellaRoleCallReplyRejectsOffTopicOpening() {
         assertFalse(
-            OneHourScenarioPolicy.isValidEllaRoleCallReply(
+            OneHourScenarioPolicy.isValidRoleCallReply(
                 "嗨，最近怎么样？有空一起吃饭吗？",
                 openingTurn = true,
             ),
         )
+        assertFalse(
+            OneHourScenarioPolicy.isValidRoleCallReply(
+                "你方便的话，顺路买瓶低脂牛奶和洗衣液吧。",
+                openingTurn = true,
+            ),
+        )
+        assertFalse(
+            OneHourScenarioPolicy.isValidRoleCallReply(
+                "我刚想起来家里牛奶快没了，顺路的话帮补一下。",
+                openingTurn = true,
+            ),
+        )
         assertTrue(
-            OneHourScenarioPolicy.isValidEllaRoleCallReply(
+            OneHourScenarioPolicy.isValidRoleCallReply(
                 "喂，下午能帮家里买点低脂牛奶吗？",
                 openingTurn = true,
             ),
+        )
+    }
+
+    @Test
+    fun ellaRoleCallInstructionDefinesSpouseRequesterBoundary() {
+        val instruction = OneHourScenarioPolicy.roleCallInstruction()
+
+        assertTrue(instruction.contains("Ella 是用户的妻子"))
+        assertTrue(instruction.contains("不是这次采购的执行方"))
+        assertTrue(instruction.contains("用户或用户的 AIOS 帮家里安排或顺路买东西"))
+        assertTrue(instruction.contains("直接接受取消"))
+        assertTrue(instruction.contains("我先去买"))
+        assertTrue(instruction.contains("把执行责任放到 Ella 身上"))
+        assertTrue(instruction.contains("不要照抄固定模板"))
+        assertTrue(instruction.contains("麻烦你啦"))
+    }
+
+    @Test
+    fun roleCallUserTranscriptDropsLeakedContextSuffixAfterRefusal() {
+        assertEquals(
+            "不买不买，先不买，不用买，不要买。",
+            OneHourScenarioPolicy.normalizeRoleCallUserTranscript(
+                "不买不买，先不买，不用买，不要买，低脂牛奶、洗衣液、Kylin、PetSmart。",
+            ),
+        )
+        assertEquals(
+            "低脂牛奶不要买，洗衣液可以买",
+            OneHourScenarioPolicy.normalizeRoleCallUserTranscript("低脂牛奶不要买，洗衣液可以买"),
         )
     }
 
@@ -433,6 +867,22 @@ class OneHourScenarioFlowTest {
     }
 
     @Test
+    fun petRouteReferenceUpdatesDoNotOwnAgentConversationText() {
+        val flow = OneHourScenarioFlow()
+        flow.acceptPetCareSlot("可以")
+
+        val updates = listOf(
+            sms("driver-1320-confirm", "Driver", "OK，13:20 到楼下。"),
+            sms("driver-kylin-picked-up", "Driver", "Kylin 已上车。"),
+            sms("driver-arrived-petsmart", "Driver", "已到 PetSmart。"),
+        ).map { event ->
+            flow.handle(event).single { it is OneHourFlowEffect.UpdateTask } as OneHourFlowEffect.UpdateTask
+        }
+
+        assertTrue(updates.all { it.update.conversations.isEmpty() })
+    }
+
+    @Test
     fun keepingOriginalPetSlotSuppressesPetFollowupEventsOnly() {
         val flow = OneHourScenarioFlow()
         flow.keepOriginalPetCareSlot("不改了")
@@ -476,10 +926,12 @@ class OneHourScenarioFlowTest {
         assertFalse(startedText.contains("14:45"))
         assertEquals("预计 16:15 左右完成", progress.update.subtitle)
         assertTrue(progressText.contains("16:15"))
+        assertFalse(progressText.contains("14:30"))
         assertFalse(progressText.contains("15:00"))
         assertFalse(petEventBodies.contains("16:00"))
         assertFalse(petEventBodies.contains("16:15"))
         assertFalse(petEventBodies.contains("14:45"))
+        assertFalse(petEventBodies.contains("14:30"))
         assertFalse(petEventBodies.contains("15:00"))
     }
 
@@ -665,6 +1117,192 @@ class OneHourScenarioFlowTest {
     }
 
     @Test
+    fun marketDeliveryCandidateRequiresPurchaseConfirmation() {
+        val flow = startFamilyShoppingFlow()
+
+        val update = flow.handle(
+            notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"),
+        ).single() as OneHourFlowEffect.UpdateTask
+
+        assertEquals(ScenarioSurfaceStatus.BLOCKED, update.update.status)
+        assertEquals("等待购买确认", update.update.progress.detail)
+        assertEquals(
+            listOf("买这两样", "先不买"),
+            update.update.decision?.actions?.map { it.label },
+        )
+        assertTrue(update.update.conversations.joinToString(" ") { it.text }.contains("要我现在锁定"))
+    }
+
+    @Test
+    fun marketDeliveryPlannerPolicyIncludesVisiblePurchaseDecision() {
+        val policy = JSONObject(
+            OneHourScenarioFlow.plannerPolicyJson(
+                notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"),
+            ),
+        )
+
+        assertTrue(policy.getJSONObject("decisionPolicy").getBoolean("visibleDecisionActionsRequired"))
+        assertEquals("买这两样", policy.getJSONArray("visibleDecisionActions").getJSONObject(0).getString("label"))
+        assertEquals("先不买", policy.getJSONArray("visibleDecisionActions").getJSONObject(1).getString("label"))
+        assertEquals(0, policy.getJSONArray("authorizedSms").length())
+    }
+
+    @Test
+    fun familyShoppingConfirmPurchaseFreeformWaitsForOrderLock() {
+        val flow = startFamilyShoppingFlow()
+        flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"))
+
+        val commands = flow.userTurnCommands(
+            taskId = FamilyShoppingTaskSurface.TASK_ID,
+            userText = "买吧",
+        ) ?: error("Expected purchase confirmation commands")
+        flow.updateRuntimeStateFromPlannerCommands(commands)
+        val update = commands.first() as ScenarioAgentCommand.UpdateTask
+        val oleSms = commands.filterIsInstance<ScenarioAgentCommand.SendSms>().single()
+
+        assertEquals(ScenarioSurfaceStatus.RUNNING, update.update.status)
+        assertEquals("Ole", oleSms.to)
+        assertEquals(FamilyShoppingTaskSurface.PURPOSE_CONFIRM_PURCHASE, oleSms.semanticPurpose)
+        assertTrue(commands.any { it is ScenarioAgentCommand.WaitSms && it.contact == "Ole" })
+
+        val locked = flow.handle(
+            notification("market-order-locked", "超市订单锁定", "低脂牛奶和洗衣液已锁定，预计 14:12 送达。"),
+        ).single() as OneHourFlowEffect.UpdateTask
+
+        assertEquals(ScenarioSurfaceStatus.DONE, locked.update.status)
+        assertTrue(locked.update.conversations.joinToString(" ") { it.text }.contains("已锁定"))
+    }
+
+    @Test
+    fun familyShoppingConfirmPurchaseSurvivesLaterListClarification() {
+        val flow = startFamilyShoppingFlow()
+        flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"))
+
+        val commands = flow.userTurnCommands(
+            taskId = FamilyShoppingTaskSurface.TASK_ID,
+            userText = "买这两样",
+        ) ?: error("Expected purchase confirmation commands")
+        flow.updateRuntimeStateFromPlannerCommands(commands)
+
+        val clarify = flow.handle(
+            sms("ella-shopping-clarify", "Ella", "洗衣液买常用那款就行，猫粮不用买。"),
+        ).single() as OneHourFlowEffect.UpdateTask
+        val locked = flow.handle(
+            notification("market-order-locked", "超市订单锁定", "低脂牛奶和洗衣液已锁定，预计 14:12 送达。"),
+        ).single() as OneHourFlowEffect.UpdateTask
+
+        assertEquals("采购清单已收敛", clarify.update.subtitle)
+        assertEquals(ScenarioSurfaceStatus.DONE, locked.update.status)
+        assertTrue(locked.update.conversations.joinToString(" ") { it.text }.contains("预计 14:12"))
+    }
+
+    @Test
+    fun familyShoppingUnconfirmedOrderLockBecomesInventoryHold() {
+        val flow = startFamilyShoppingFlow()
+        flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"))
+
+        val held = flow.handle(
+            notification("market-order-locked", "超市订单锁定", "低脂牛奶和洗衣液已锁定。"),
+        ).single() as OneHourFlowEffect.UpdateTask
+        val text = held.update.conversations.joinToString(" ") { it.text }
+
+        assertEquals(ScenarioSurfaceStatus.BLOCKED, held.update.status)
+        assertTrue(text.contains("不会自动付款"))
+        assertEquals(
+            listOf("买这两样", "先不买"),
+            held.update.decision?.actions?.map { it.label },
+        )
+    }
+
+    @Test
+    fun familyShoppingHoldConfirmationStaysCompletedAfterRuntimeSync() {
+        val flow = startFamilyShoppingFlow()
+        flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"))
+        flow.handle(notification("market-order-locked", "超市订单锁定", "低脂牛奶和洗衣液已锁定。"))
+
+        val commands = flow.userTurnCommands(
+            taskId = FamilyShoppingTaskSurface.TASK_ID,
+            userText = "买这两样",
+        ) ?: error("Expected held purchase confirmation commands")
+        flow.updateRuntimeStateFromPlannerCommands(commands)
+        val update = commands.first() as ScenarioAgentCommand.UpdateTask
+        val status = flow.userTurnCommands(
+            taskId = FamilyShoppingTaskSurface.TASK_ID,
+            userText = "状态",
+        )?.single() as ScenarioAgentCommand.UpdateTask
+
+        assertEquals(ScenarioSurfaceStatus.DONE, update.update.status)
+        assertTrue(commands.none { it is ScenarioAgentCommand.WaitSms })
+        assertEquals(ScenarioSurfaceStatus.DONE, status.update.status)
+        assertTrue(status.update.conversations.joinToString(" ") { it.text }.contains("家庭采购已下单"))
+    }
+
+    @Test
+    fun familyShoppingRemoveFruitKeepsPurchaseDecision() {
+        val flow = startFamilyShoppingFlow()
+        flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"))
+
+        val update = flow.userTurnCommands(
+            taskId = FamilyShoppingTaskSurface.TASK_ID,
+            userText = "不要水果",
+        )?.single() as ScenarioAgentCommand.UpdateTask
+        val text = update.update.conversations.joinToString(" ") { it.text }
+
+        assertEquals(ScenarioSurfaceStatus.RUNNING, update.update.status)
+        assertTrue(text.contains("移除 水果"))
+        assertTrue(text.contains("低脂牛奶、常用洗衣液"))
+        assertEquals(
+            listOf("买这两样", "先不买"),
+            update.update.decision?.actions?.map { it.label },
+        )
+    }
+
+    @Test
+    fun familyShoppingDeliveryWindowFreeformSendsStructuredRequest() {
+        val flow = startFamilyShoppingFlow()
+        flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"))
+
+        val commands = flow.userTurnCommands(
+            taskId = FamilyShoppingTaskSurface.TASK_ID,
+            userText = "14:30 后送",
+        ) ?: error("Expected delivery window commands")
+        flow.updateRuntimeStateFromPlannerCommands(commands)
+        val update = commands.first() as ScenarioAgentCommand.UpdateTask
+        val oleSms = commands.filterIsInstance<ScenarioAgentCommand.SendSms>().single()
+        val status = flow.userTurnCommands(
+            taskId = FamilyShoppingTaskSurface.TASK_ID,
+            userText = "状态",
+        )?.single() as ScenarioAgentCommand.UpdateTask
+
+        assertTrue(update.update.conversations.joinToString(" ") { it.text }.contains("14:30"))
+        assertEquals(FamilyShoppingTaskSurface.PURPOSE_DELIVERY_WINDOW, oleSms.semanticPurpose)
+        assertTrue(commands.any { it is ScenarioAgentCommand.WaitSms && it.contact == "Ole" })
+        assertTrue(status.update.conversations.joinToString(" ") { it.text }.contains("配送窗口：14:30"))
+    }
+
+    @Test
+    fun familyShoppingCancelSuppressesLaterOrderLock() {
+        val flow = startFamilyShoppingFlow()
+        flow.handle(notification("market-delivery-window", "超市配送窗口", "低脂牛奶和洗衣液 45 分钟内可送达。"))
+
+        val commands = flow.userTurnCommands(
+            taskId = FamilyShoppingTaskSurface.TASK_ID,
+            userText = "先不买",
+        ) ?: error("Expected purchase cancel commands")
+        flow.updateRuntimeStateFromPlannerCommands(commands)
+        val update = commands.first() as ScenarioAgentCommand.UpdateTask
+        val oleSms = commands.filterIsInstance<ScenarioAgentCommand.SendSms>().single()
+
+        assertEquals(ScenarioSurfaceStatus.DONE, update.update.status)
+        assertEquals(FamilyShoppingTaskSurface.PURPOSE_CANCEL_PURCHASE, oleSms.semanticPurpose)
+        assertTrue(
+            flow.handle(
+                notification("market-order-locked", "超市订单锁定", "低脂牛奶和洗衣液已锁定。"),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun ellaCallTranscriptMatchesScenarioContextAsset() {
         val transcript = FamilyShoppingTaskSurface.transcriptForAudioRef("ella-call-ended")
             ?: error("Missing Ella call transcript")
@@ -692,6 +1330,21 @@ class OneHourScenarioFlowTest {
         assertEquals("coldchain-delivery-live", (coldchain.single() as OneHourFlowEffect.CreateTask).seed.taskId)
         assertEquals("family-shopping-live", (market.single() as OneHourFlowEffect.UpdateTask).update.taskId)
     }
+
+    private fun startFamilyShoppingFlow(): OneHourScenarioFlow =
+        OneHourScenarioFlow().also { flow ->
+            flow.handle(
+                CallEndedEvent(
+                    id = "ella-call-ended",
+                    occurredAt = now.withHour(13).withMinute(11),
+                    source = "Ella",
+                    title = "Ella 通话结束",
+                    body = "通话结束，音频可用于提取家庭采购待办。",
+                    contact = "Ella",
+                    audioRef = "ella-call-ended",
+                ),
+            )
+        }
 
     private fun sms(
         id: String,

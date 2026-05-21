@@ -240,6 +240,36 @@ class ScenarioAgentTurnRunnerTest {
     }
 
     @Test
+    fun systemPromptBansRuntimeBroadcastWordingOnVisibleSurfaces() = runBlocking {
+        val llm = StubLlmClient(
+            LlmResponse(
+                content = "",
+                toolCalls = listOf(
+                    LlmToolCall(
+                        id = "call-1",
+                        name = EmitScenarioCommandsTool.NAME,
+                        argumentsJson = """{"commands":[{"type":"switch_task","taskId":"pet-task"}]}""",
+                    ),
+                ),
+                finishReason = "tool_calls",
+            ),
+        )
+
+        runner(llm).run(baseInput())
+
+        val systemPrompt = llm.requests.single().first { it.role == "system" }.content.orEmpty()
+        assertTrue(systemPrompt.contains("Agent 表达"))
+        assertTrue(systemPrompt.contains("不要把 SystemRuntime 的事件标题或正文原样搬到用户可见界面"))
+        assertTrue(systemPrompt.contains("XX 来信"))
+        assertTrue(systemPrompt.contains("XX 通话结束"))
+        assertTrue(systemPrompt.contains("已从通话转写整理出待办"))
+        assertTrue(systemPrompt.contains("某某来信：原文内容"))
+        assertFalse(systemPrompt.contains("PetSmart"))
+        assertFalse(systemPrompt.contains("Ella"))
+        assertFalse(systemPrompt.contains("Kylin"))
+    }
+
+    @Test
     fun keepsSessionHistoriesIsolatedBySessionId() = runBlocking {
         val sessions = MemorySessionRepository()
         val llm = StubLlmClient(

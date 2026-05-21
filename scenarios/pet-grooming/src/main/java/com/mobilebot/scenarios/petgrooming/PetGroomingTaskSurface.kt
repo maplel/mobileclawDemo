@@ -26,12 +26,7 @@ object PetGroomingTaskSurface {
             title = "麒麟洗护",
             subtitle = "PetSmart 14:00 空档待确认",
             status = ScenarioSurfaceStatus.BLOCKED,
-            conversations = listOf(
-                ScenarioConversation(
-                    role = ScenarioSurfaceRole.AGENT,
-                    text = "PetSmart 来信息说 14:00 空出来了，可以安排 Kylin 洗澡和去浮毛。要把原来 17:00 只洗澡改到 14:00 吗？",
-                ),
-            ),
+            conversations = emptyList(),
             logs = listOf(
                 ScenarioLog("收到 PetSmart 的短信：$messageBody"),
             ),
@@ -72,13 +67,7 @@ object PetGroomingTaskSurface {
             taskId = TASK_ID,
             status = ScenarioSurfaceStatus.RUNNING,
             subtitle = "已改约 14:00，等待司机确认",
-            conversations = listOf(
-                ScenarioConversation(ScenarioSurfaceRole.USER, userLabel),
-                ScenarioConversation(
-                    ScenarioSurfaceRole.AGENT,
-                    "我已经回复 PetSmart 同意改到 14:00，并联系了司机老陈，正在等他确认。",
-                ),
-            ),
+            conversations = emptyList(),
             logs = listOf(
                 ScenarioLog("发送短信给 PetSmart：好的，14:00 准时到。"),
                 ScenarioLog("添加 Driver 到参与方。"),
@@ -126,12 +115,7 @@ object PetGroomingTaskSurface {
             taskId = TASK_ID,
             status = ScenarioSurfaceStatus.RUNNING,
             subtitle = "司机 13:20 到楼下",
-            conversations = listOf(
-                ScenarioConversation(
-                    ScenarioSurfaceRole.AGENT,
-                    "司机老陈已经回复 OK，我给你定了 13:20 送 Kylin 下楼的提醒。",
-                ),
-            ),
+            conversations = emptyList(),
             logs = listOf(
                 ScenarioLog("收到 Driver 的短信：$messageBody"),
                 ScenarioLog("创建提醒：送 Kylin 下楼（13:20）。"),
@@ -149,12 +133,7 @@ object PetGroomingTaskSurface {
             taskId = TASK_ID,
             status = ScenarioSurfaceStatus.RUNNING,
             subtitle = "Kylin 已上车",
-            conversations = listOf(
-                ScenarioConversation(
-                    ScenarioSurfaceRole.AGENT,
-                    "老陈已经接到 Kylin，正在去 PetSmart 的路上。",
-                ),
-            ),
+            conversations = emptyList(),
             logs = listOf(
                 ScenarioLog("收到 Driver 的短信：$messageBody"),
                 ScenarioLog("更新状态：Kylin 已上车，前往 PetSmart。"),
@@ -190,12 +169,7 @@ object PetGroomingTaskSurface {
             taskId = TASK_ID,
             status = ScenarioSurfaceStatus.RUNNING,
             subtitle = "Kylin 已到 PetSmart",
-            conversations = listOf(
-                ScenarioConversation(
-                    ScenarioSurfaceRole.AGENT,
-                    "老陈已经把 Kylin 送到 PetSmart，店员已接走。",
-                ),
-            ),
+            conversations = emptyList(),
             logs = listOf(
                 ScenarioLog("收到 Driver 的短信：$messageBody"),
                 ScenarioLog("更新状态：Kylin 已到店，等待 PetSmart 服务进度。"),
@@ -425,7 +399,7 @@ object PetGroomingTaskSurface {
             conversations = listOf(
                 ScenarioConversation(
                     ScenarioSurfaceRole.AGENT,
-                    "PetSmart 确认 $effectiveMessage",
+                    effectiveMessage,
                 ),
             ),
             logs = listOf(
@@ -458,7 +432,7 @@ object PetGroomingTaskSurface {
             conversations = listOf(
                 ScenarioConversation(
                     ScenarioSurfaceRole.AGENT,
-                    "PetSmart 更新了进度：$effectiveMessage 我会继续等完成通知。",
+                    "$effectiveMessage 我会继续等完成通知。",
                 ),
             ),
             logs = listOf(

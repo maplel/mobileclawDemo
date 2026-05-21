@@ -17,6 +17,7 @@ import com.mobilebot.domain.agent.AgentDecisionIntent
 import com.mobilebot.domain.agent.AgentDecisionIntentNormalizer
 import com.mobilebot.domain.agent.ScenarioCommandGuard
 import com.mobilebot.domain.agent.ScenarioAgentTurnInput
+import com.mobilebot.domain.agent.ScenarioAgentTurnResult
 import com.mobilebot.domain.agent.ScenarioAgentTurnRunner
 import com.mobilebot.domain.interaction.ActionPromptCodec
 import com.mobilebot.domain.repository.MemoryFileRepository
@@ -25,6 +26,8 @@ import com.mobilebot.domain.tools.ToolRegistry
 import com.mobilebot.network.RoleCallModel
 import com.mobilebot.network.RoleCallRequest
 import com.mobilebot.network.RoleCallTurn
+import com.mobilebot.network.SpeechRecognizer
+import com.mobilebot.network.SpeechSynthesizer
 import com.mobilebot.scenarios.onehour.OneHourFlowEffect
 import com.mobilebot.scenarios.onehour.OneHourScenarioPolicy
 import com.mobilebot.scenarios.onehour.OneHourScenarioFlow
@@ -87,6 +90,8 @@ class AgentExperienceViewModel
         private val systemRuntime: SystemRuntime,
         private val voiceCallSessionRuntime: VoiceCallSessionRuntime,
         private val roleCallModel: RoleCallModel,
+        private val speechRecognizer: SpeechRecognizer,
+        private val speechSynthesizer: SpeechSynthesizer,
         private val scenarioAgentTurnRunner: ScenarioAgentTurnRunner,
         private val toolRegistry: ToolRegistry,
         private val memoryFiles: MemoryFileRepository,
@@ -1106,6 +1111,10 @@ class AgentExperienceViewModel
             }
         }
 
+        fun declineSystemNotification() {
+            _frame.update { it.copy(systemNotification = null) }
+        }
+
         fun submitCallUserTurn(text: String) {
             val cleanText = text.trim()
             val call = _frame.value.activeCall ?: return
@@ -1114,10 +1123,51 @@ class AgentExperienceViewModel
             _frame.updateActiveCall(session, "对方思考中", inputEnabled = false)
             viewModelScope.launch {
                 val reply = generateRoleCallReply(session, cleanText, openingTurn = false)
+                if (reply.isNullOrBlank()) {
+                    val current = voiceCallSessionRuntime.currentSession(call.id) ?: return@launch
+                    _frame.updateActiveCall(current, "LLM reply failed", inputEnabled = true)
+                    return@launch
+                }
                 val updated = voiceCallSessionRuntime.appendTurn(call.id, VoiceCallSpeaker.AGENT, reply)
                     ?: voiceCallSessionRuntime.currentSession(call.id)
                     ?: return@launch
-                _frame.updateActiveCall(updated, "等待你回应", inputEnabled = true)
+                _frame.updateActiveCall(updated, "AI 语音合成中", inputEnabled = false)
+                val audio = synthesizeRoleCallReplyAudio(reply)
+                _frame.updateActiveCall(updated, "等待你回应", inputEnabled = true, agentAudio = audio)
+            }
+        }
+
+        fun submitCallVoiceTurn(
+            audioBytes: ByteArray,
+            mimeType: String = "audio/wav",
+        ) {
+            val call = _frame.value.activeCall ?: return
+            if (audioBytes.isEmpty() || !call.inputEnabled) return
+            val session = voiceCallSessionRuntime.currentSession(call.id) ?: return
+            _frame.updateActiveCall(session, "正在转写语音", inputEnabled = false)
+            viewModelScope.launch {
+                val userText = transcribeCallUserAudio(audioBytes, mimeType)
+                if (userText.isBlank()) {
+                    val current = voiceCallSessionRuntime.currentSession(call.id) ?: return@launch
+                    _frame.updateActiveCall(current, "没听清，请再说一次", inputEnabled = true)
+                    return@launch
+                }
+                val withUser = voiceCallSessionRuntime.appendTurn(call.id, VoiceCallSpeaker.USER, userText)
+                    ?: voiceCallSessionRuntime.currentSession(call.id)
+                    ?: return@launch
+                _frame.updateActiveCall(withUser, "对方思考中", inputEnabled = false)
+                val reply = generateRoleCallReply(withUser, userText, openingTurn = false)
+                if (reply.isNullOrBlank()) {
+                    val current = voiceCallSessionRuntime.currentSession(call.id) ?: return@launch
+                    _frame.updateActiveCall(current, "LLM reply failed", inputEnabled = true)
+                    return@launch
+                }
+                val withAgent = voiceCallSessionRuntime.appendTurn(call.id, VoiceCallSpeaker.AGENT, reply)
+                    ?: voiceCallSessionRuntime.currentSession(call.id)
+                    ?: return@launch
+                _frame.updateActiveCall(withAgent, "AI 语音合成中", inputEnabled = false)
+                val audio = synthesizeRoleCallReplyAudio(reply)
+                _frame.updateActiveCall(withAgent, "等待你回应", inputEnabled = true, agentAudio = audio)
             }
         }
 
@@ -1142,10 +1192,11 @@ class AgentExperienceViewModel
                         occurredAt = scenarioClock,
                         source = call.caller,
                         title = "${call.caller} 通话结束",
-                        body = "通话结束，音频可用于提取家庭采购待办。",
+                        body = OneHourScenarioPolicy.callEndedEventBody(),
                         contact = call.caller,
                         audioRef = transcript?.audioRef ?: VoiceCallSession.runtimeAudioRef(call.id),
                         callSessionId = call.id,
+                        transcript = transcript?.transcript,
                     ),
                 )
             }
@@ -1154,35 +1205,38 @@ class AgentExperienceViewModel
         private suspend fun generateRoleCallOpeningTurn(sessionId: String) {
             val session = voiceCallSessionRuntime.currentSession(sessionId) ?: return
             val reply = generateRoleCallReply(session, latestUserText = "", openingTurn = true)
+            if (reply.isNullOrBlank()) {
+                _frame.updateActiveCall(session, "LLM opening failed", inputEnabled = false)
+                return
+            }
             val updated = voiceCallSessionRuntime.appendTurn(sessionId, VoiceCallSpeaker.AGENT, reply)
                 ?: voiceCallSessionRuntime.currentSession(sessionId)
                 ?: return
-            _frame.updateActiveCall(updated, "等待你回应", inputEnabled = true)
+            _frame.updateActiveCall(updated, "AI 语音合成中", inputEnabled = false)
+            val audio = synthesizeRoleCallReplyAudio(reply)
+            _frame.updateActiveCall(updated, "等待你回应", inputEnabled = true, agentAudio = audio)
         }
 
         private suspend fun generateRoleCallReply(
             session: VoiceCallSession,
             latestUserText: String,
             openingTurn: Boolean,
-        ): String {
+        ): String? {
             val hasApiKey = settings.getApiKey().isNotBlank()
             if (!hasApiKey) {
-                return OneHourScenarioPolicy.fallbackRoleCallReply(
-                    openingTurn = openingTurn,
-                    userTurns = session.turns.count { it.speaker == VoiceCallSpeaker.USER },
-                )
+                return null
             }
             return runCatching {
                 llmConfigurator.beforeRequest()
                 withContext(Dispatchers.IO) {
                     withTimeoutOrNull(CALL_ROLE_MODEL_TIMEOUT_MS) {
                         roleCallModel.nextReply(
-                            RoleCallRequest(
-                                personaId = session.personaId,
-                                personaInstruction = OneHourScenarioPolicy.ellaRoleCallInstruction(),
-                                contactName = session.contact,
-                                transcript = session.turns.map {
-                                    RoleCallTurn(
+                                RoleCallRequest(
+                                    personaId = session.personaId,
+                                    personaInstruction = OneHourScenarioPolicy.roleCallInstruction(),
+                                    contactName = session.contact,
+                                    transcript = session.turns.map {
+                                        RoleCallTurn(
                                         speaker = when (it.speaker) {
                                             VoiceCallSpeaker.USER -> "用户"
                                             VoiceCallSpeaker.AGENT -> session.contact
@@ -1196,19 +1250,62 @@ class AgentExperienceViewModel
                         ).text
                     }
                 }
+            }.onFailure {
+                Log.e(TAG, "Role call LLM failed", it)
             }.getOrNull()
                 ?.takeIf { it.isNotBlank() }
-                ?.takeIf { OneHourScenarioPolicy.isValidEllaRoleCallReply(it, openingTurn) }
-                ?: OneHourScenarioPolicy.fallbackRoleCallReply(
-                    openingTurn = openingTurn,
-                    userTurns = session.turns.count { it.speaker == VoiceCallSpeaker.USER },
+                ?.takeIf { OneHourScenarioPolicy.isValidRoleCallReply(it, openingTurn) }
+        }
+
+        private suspend fun transcribeCallUserAudio(
+            audioBytes: ByteArray,
+            mimeType: String,
+        ): String {
+            val hasApiKey = settings.getApiKey().isNotBlank()
+            if (!hasApiKey) return ""
+            return runCatching {
+                llmConfigurator.beforeRequest()
+                withContext(Dispatchers.IO) {
+                    withTimeoutOrNull(CALL_ASR_TIMEOUT_MS) {
+                        speechRecognizer.transcribeAudio(audioBytes, mimeType)
+                    }
+                }
+            }.onFailure {
+                Log.e(TAG, "Call ASR failed", it)
+            }.getOrNull()
+                .orEmpty()
+                .let(OneHourScenarioPolicy::normalizeRoleCallUserTranscript)
+        }
+
+        private suspend fun synthesizeRoleCallReplyAudio(text: String): AgentCallAudio? {
+            val hasApiKey = settings.getApiKey().isNotBlank()
+            if (!hasApiKey || text.isBlank()) return null
+            return runCatching {
+                llmConfigurator.beforeRequest()
+                withContext(Dispatchers.IO) {
+                    withTimeoutOrNull(CALL_TTS_TIMEOUT_MS) {
+                        speechSynthesizer.synthesizeSpeech(
+                            text = text,
+                            voice = "Cherry",
+                            languageType = "Chinese",
+                        )
+                    }
+                }
+            }.onFailure {
+                Log.e(TAG, "Call TTS failed", it)
+            }.getOrNull()?.let {
+                AgentCallAudio(
+                    id = "tts-${UUID.randomUUID()}",
+                    audioUrl = it.audioUrl,
                 )
+            }
         }
 
         private fun MutableStateFlow<AgentExperienceFrame>.updateActiveCall(
             session: VoiceCallSession,
             statusText: String,
             inputEnabled: Boolean,
+            agentAudio: AgentCallAudio? = null,
         ) {
             update { frame ->
                 val current = frame.activeCall
@@ -1229,6 +1326,7 @@ class AgentExperienceViewModel
                                 )
                             },
                             inputEnabled = inputEnabled,
+                            agentAudio = agentAudio ?: current.agentAudio,
                         ),
                     )
                 }
@@ -1865,7 +1963,7 @@ class AgentExperienceViewModel
 
         private fun heldRuntimeEventIds(): Set<String> =
             buildSet {
-                add("ella-call-ended")
+                addAll(OneHourScenarioFlow.manuallyCompletedEventIds)
                 if (!oneHourFlow.isPetCareAccepted()) {
                     addAll(OneHourScenarioFlow.petAcceptanceRequiredEventIds)
                 }
@@ -1874,15 +1972,32 @@ class AgentExperienceViewModel
         private fun handleSystemRuntimeEvent(event: SystemRuntimeEvent) {
             val timeText = blueprintTimeText(event.occurredAt)
             val localEffects = oneHourFlow.handle(event)
+            val suppressPlanner = oneHourFlow.shouldSuppressPlannerForEvent(event)
+            val deferTaskSurfaceToPlanner = OneHourScenarioFlow.plannerOwnsSystemTaskSurface(event)
+            val effectsToApplyNow = if (deferTaskSurfaceToPlanner) {
+                localEffects.withoutTaskSurfaceEffects()
+            } else {
+                localEffects
+            }
             _frame.update {
                 it.copy(
                     recentSystemEvents = appendSystemEvent(it.recentSystemEvents, event),
-                    debugTrace = appendTrace(it.debugTrace, "system event -> ${event.id}"),
+                    debugTrace = appendTrace(
+                        it.debugTrace,
+                        if (suppressPlanner) {
+                            "system event suppressed -> ${event.id}"
+                        } else if (deferTaskSurfaceToPlanner) {
+                            "system event -> scenario planner ${event.id}"
+                        } else {
+                            "system event -> ${event.id}"
+                        },
+                    ),
                 )
             }
-            applyOneHourFlowEffects(localEffects, timeText)
+            applyOneHourFlowEffects(effectsToApplyNow, timeText)
+            if (suppressPlanner) return
             viewModelScope.launch {
-                runScenarioAgentForSystemEvent(event, localEffects)
+                runScenarioAgentForSystemEvent(event, effectsToApplyNow)
             }
         }
 
@@ -1891,13 +2006,12 @@ class AgentExperienceViewModel
             localEffects: List<OneHourFlowEffect>,
         ) {
             val authorization = OneHourScenarioFlow.commandAuthorizationForEvent(event)
-            if (shouldSkipScenarioPlanner(authorization, localEffects)) return
+            if (shouldSkipScenarioPlanner(authorization)) return
             val taskId = authorization.taskIds.firstOrNull { taskStates.containsKey(it) }
                 ?: authorization.taskIds.firstOrNull()
                 ?: _frame.value.activeTaskId
             val sessionId = sessionIdForTask(taskId ?: event.id)
             val timeText = blueprintTimeText(event.occurredAt)
-            recordObservedSystemEventLog(event, timeText, authorization.taskIds)
             if (authorization.taskIds.isNotEmpty()) {
                 _frame.update {
                     it.copy(
@@ -1938,6 +2052,7 @@ class AgentExperienceViewModel
                 val commands = result.commands.withoutLocallyHandledTaskSurfaceCommands(localEffects)
                 if (commands.isEmpty() && authorization.taskIds.isNotEmpty()) {
                     recordScenarioAgentDiagnostic("system ${event.id}", "LLM 未返回命令，未执行本地业务结果。")
+                    _frame.update { it.copy(busy = false) }
                     return
                 }
                 val guardError = ScenarioCommandGuard.validate(
@@ -1946,10 +2061,11 @@ class AgentExperienceViewModel
                     authorization = authorization,
                 )
                 if (guardError == null) {
-                    applyScenarioAgentCommands(commands.withSystemEventLog(event), timeText)
+                    applyScenarioAgentCommands(commands, timeText)
                     _frame.update { it.copy(busy = false, activeActionValue = null) }
                 } else {
                     recordScenarioAgentDiagnostic("system ${event.id}", guardError)
+                    _frame.update { it.copy(busy = false) }
                 }
             } else {
                 val reason = result?.error ?: if (hasApiKey) {
@@ -1958,41 +2074,24 @@ class AgentExperienceViewModel
                     "未配置 API Key，未执行本地业务结果。"
                 }
                 recordScenarioAgentDiagnostic("system ${event.id}", reason)
+                _frame.update { it.copy(busy = false) }
             }
         }
 
-        private fun shouldSkipScenarioPlanner(
-            authorization: ScenarioCommandAuthorization,
-            localEffects: List<OneHourFlowEffect>,
-        ): Boolean {
-            if (authorization.taskIds.isEmpty()) return true
-            if (localEffects.isEmpty()) return false
-            return authorization.sms.isEmpty() && authorization.reminders.isEmpty()
-        }
+        private fun shouldSkipScenarioPlanner(authorization: ScenarioCommandAuthorization): Boolean =
+            authorization.taskIds.isEmpty()
 
-        private suspend fun runScenarioPlanner(input: ScenarioAgentTurnInput) =
-            withContext(Dispatchers.IO) {
-                withTimeoutOrNull(SCENARIO_PLANNER_TIMEOUT_MS) {
-                    scenarioAgentTurnRunner.run(input)
-            }
-        }
-
-        private fun recordObservedSystemEventLog(
-            event: SystemRuntimeEvent,
-            timeText: String,
-            taskIds: Set<String>,
-        ) {
-            val eventLog = ScenarioLog(event.toBlueprintLogText())
-            taskIds
-                .filter { taskStates.containsKey(it) }
-                .forEach { taskId ->
-                    updateTaskState(taskId, activate = _frame.value.activeTaskId == taskId) { task ->
-                        task.copy(
-                            taskLogs = appendTaskLogs(task.taskLogs, listOf(eventLog).toTaskLogs(timeText)),
-                        )
+        private suspend fun runScenarioPlanner(input: ScenarioAgentTurnInput): ScenarioAgentTurnResult? =
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    withTimeoutOrNull(SCENARIO_PLANNER_TIMEOUT_MS) {
+                        scenarioAgentTurnRunner.run(input)
                     }
                 }
-        }
+            }.getOrElse { e ->
+                Log.e(TAG, "Scenario planner failed", e)
+                ScenarioAgentTurnResult(error = e.message ?: e.javaClass.simpleName)
+            }
 
         private fun SystemRuntimeEvent.toAgentFact(): String =
             buildString {
@@ -2010,34 +2109,13 @@ class AgentExperienceViewModel
                         appendLine("contact: ${event.contact}")
                         appendLine("audioRef: ${event.audioRef}")
                         event.callSessionId?.let { appendLine("callSessionId: $it") }
+                        event.transcript?.trim()?.takeIf { it.isNotBlank() }?.let {
+                            appendLine("transcript: $it")
+                        }
                     }
                     else -> Unit
                 }
             }
-
-        private fun List<ScenarioAgentCommand>.withSystemEventLog(event: SystemRuntimeEvent): List<ScenarioAgentCommand> {
-            val eventLog = ScenarioLog(event.toBlueprintLogText())
-            val loggedTaskIds = mutableSetOf<String>()
-            return map { command ->
-                when (command) {
-                    is ScenarioAgentCommand.CreateTask -> {
-                        if (!loggedTaskIds.add(command.seed.taskId)) {
-                            command
-                        } else {
-                            command.copy(seed = command.seed.copy(logs = command.seed.logs.withEventLog(eventLog, event)))
-                        }
-                    }
-                    is ScenarioAgentCommand.UpdateTask -> {
-                        if (!loggedTaskIds.add(command.update.taskId)) {
-                            command
-                        } else {
-                            command.copy(update = command.update.copy(logs = command.update.logs.withEventLog(eventLog, event)))
-                        }
-                    }
-                    else -> command
-                }
-            }
-        }
 
         private fun List<ScenarioAgentCommand>.withoutLocallyHandledTaskSurfaceCommands(
             localEffects: List<OneHourFlowEffect>,
@@ -2062,57 +2140,6 @@ class AgentExperienceViewModel
                         is ScenarioAgentCommand.CreateReminder,
                         is ScenarioAgentCommand.SwitchTask -> false
                     }
-            }
-        }
-
-        private fun List<ScenarioLog>.withEventLog(
-            eventLog: ScenarioLog,
-            event: SystemRuntimeEvent,
-        ): List<ScenarioLog> {
-            val alreadyLogged = any { log ->
-                log.text == eventLog.text || (event.body.isNotBlank() && log.text.contains(event.body))
-            }
-            if (alreadyLogged) return this
-            val remainingLogs = if (firstOrNull()?.isUnattributedEventSummary() == true) drop(1) else this
-            return listOf(eventLog) + remainingLogs
-        }
-
-        private fun ScenarioLog.isUnattributedEventSummary(): Boolean {
-            val value = text.trim()
-            if (value.isBlank()) return false
-            val operationPrefixes = listOf(
-                "收到",
-                "发送",
-                "开始",
-                "创建",
-                "触发",
-                "记录",
-                "支付",
-                "添加",
-                "移除",
-                "完成",
-                "更新",
-                "联系",
-                "监听",
-                "回复",
-                "取消",
-            )
-            return operationPrefixes.none { value.startsWith(it) }
-        }
-
-        private fun SystemRuntimeEvent.toBlueprintLogText(): String {
-            val detail = body.ifBlank { title }
-            val sourceText = source.ifBlank { "系统" }
-            return when (this) {
-                is IncomingSmsEvent -> "收到 $sourceText 短信：$detail"
-                is IncomingCallEvent -> "收到 $sourceText 来电：$detail"
-                is CallEndedEvent -> "$sourceText 通话结束：$detail"
-                is ReminderFiredEvent -> "触发提醒：$detail"
-                is AlarmFiredEvent -> "触发闹钟：$detail"
-                is IncomingEmailEvent -> "收到 $sourceText 邮件：$detail"
-                is EmailSentEvent -> "已发送邮件给 ${to}：$detail"
-                is WebQueryResultEvent -> "网页查询结果：$detail"
-                else -> "收到 $sourceText 通知：$detail"
             }
         }
 
@@ -2365,15 +2392,12 @@ class AgentExperienceViewModel
         ) {
             val prompt = _frame.value.decisionPrompt ?: return
             val presentedActions = prompt.actions.map { it.toAgentDecisionAction() }
-            val userConversation = if (selectedActionValue == null) {
-                AgentConversationItem(
-                    id = nextId("conversation"),
-                    role = AgentConversationRole.USER,
-                    text = displayText,
-                )
-            } else {
-                null
-            }
+            val userConversation = AgentConversationItem(
+                id = nextId("conversation"),
+                role = AgentConversationRole.USER,
+                text = displayText,
+                actionValue = selectedActionValue,
+            )
             _frame.value.activeTaskId?.let { taskId ->
                 taskStates[taskId]?.let { task ->
                     taskStates[taskId] = task.copy(
@@ -2381,6 +2405,8 @@ class AgentExperienceViewModel
                             task.conversationItems,
                             listOfNotNull(userConversation),
                         ),
+                        decisionPrompt = null,
+                        activeActionValue = selectedActionValue,
                         selectedAction = null,
                     )
                 }
@@ -2389,7 +2415,7 @@ class AgentExperienceViewModel
                 it.copy(
                     statusLabel = "理解中",
                     busy = true,
-                    decisionPrompt = if (selectedActionValue == null) null else it.decisionPrompt,
+                    decisionPrompt = null,
                     activeActionValue = selectedActionValue,
                     conversationItems = appendConversationItems(
                         it.conversationItems,
@@ -2400,7 +2426,7 @@ class AgentExperienceViewModel
                         label = "理解中",
                         detail = displayText,
                     ),
-                    debugTrace = appendTrace(it.debugTrace, "local decision -> ${rawText.take(160)}"),
+                    debugTrace = appendTrace(it.debugTrace, "user decision -> scenario planner ${rawText.take(160)}"),
                 )
             }
             viewModelScope.launch {
@@ -2423,9 +2449,12 @@ class AgentExperienceViewModel
             val authorization = OneHourScenarioFlow.commandAuthorizationForUserDecision(taskId)
             val sessionId = sessionIdForTask(taskId)
             val timeText = blueprintTimeText(scenarioClock)
+            val actionKey = selectedActionValue
+                ?.removePrefix(SCRIPTED_ACTION_PREFIX)
+                ?.takeIf { it != selectedActionValue }
             oneHourFlow.userDecisionCommands(
                 taskId = taskId,
-                actionKey = selectedActionValue?.removePrefix(SCRIPTED_ACTION_PREFIX),
+                actionKey = actionKey,
                 userText = displayText,
             )?.let { commands ->
                 applyScenarioAgentCommands(commands, timeText)
@@ -2499,11 +2528,10 @@ class AgentExperienceViewModel
         ) {
             val resolvedAction = selectedActionValue?.let { ActionButton(selectedActionLabel, it) }
             _frame.update { frame ->
-                val shouldRetainAction = resolvedAction != null && frame.decisionPrompt == null
                 frame.copy(
                     busy = false,
-                    activeActionValue = if (shouldRetainAction) resolvedAction.value else null,
-                    selectedAction = if (shouldRetainAction) resolvedAction else null,
+                    activeActionValue = null,
+                    selectedAction = resolvedAction,
                 )
             }
             _frame.value.activeTaskId?.let { taskId ->
@@ -2519,6 +2547,11 @@ class AgentExperienceViewModel
         ) {
             effects.forEach { applyOneHourFlowEffect(it, timeText) }
         }
+
+        private fun List<OneHourFlowEffect>.withoutTaskSurfaceEffects(): List<OneHourFlowEffect> =
+            filterNot { effect ->
+                effect is OneHourFlowEffect.CreateTask || effect is OneHourFlowEffect.UpdateTask
+            }
 
         private fun applyOneHourFlowEffect(
             effect: OneHourFlowEffect,
@@ -2939,6 +2972,8 @@ class AgentExperienceViewModel
             private const val SCENARIO_CLOCK_TICK_MS = 60_000L
             private const val SCENARIO_PLANNER_TIMEOUT_MS = 45_000L
             private const val CALL_ROLE_MODEL_TIMEOUT_MS = 20_000L
+            private const val CALL_ASR_TIMEOUT_MS = 30_000L
+            private const val CALL_TTS_TIMEOUT_MS = 30_000L
             private const val CLOCK_LOOP_INTERVAL_MS = 1_000L
             private const val CLOCK_ADVANCE_STEPS = 30
             private const val CLOCK_ADVANCE_STEP_MS = 1_000L

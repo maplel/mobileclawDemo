@@ -58,6 +58,17 @@ class UserSettingsResolutionTest {
     }
 
     @Test
+    fun `resolvedBaseUrl maps aliyun maas endpoint to dashscope compatible base`() {
+        assertEquals(
+            LlmEndpointDefaults.DASHSCOPE_OPENAI_COMPAT_BASE,
+            UserSettingsResolution.resolvedBaseUrl(
+                keyPresent = true,
+                stored = "https://llm-vpxpdvq9q3ehwjve.cn-beijing.maas.aliyuncs.com",
+            ),
+        )
+    }
+
+    @Test
     fun `resolvedModel returns default Gemini model when pref key absent`() {
         assertEquals(
             LlmEndpointDefaults.DEFAULT_GEMINI_MODEL,

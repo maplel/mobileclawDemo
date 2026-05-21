@@ -29,6 +29,25 @@ class VoiceCallSessionRuntimeTest {
     }
 
     @Test
+    fun `finishSession does not extract shopping task after user refuses purchase`() {
+        val runtime = VoiceCallSessionRuntime()
+        val session = runtime.startSession(
+            sessionId = "ella-call",
+            contact = "Ella",
+            personaId = "ella",
+        )
+
+        runtime.appendTurn(session.id, VoiceCallSpeaker.AGENT, "你方便的话，顺路买瓶低脂牛奶和洗衣液吧。")
+        runtime.appendTurn(session.id, VoiceCallSpeaker.USER, "不买不买。")
+        runtime.appendTurn(session.id, VoiceCallSpeaker.AGENT, "那不买了，辛苦你啦。")
+        val transcript = runtime.finishSession(session.id)
+
+        assertNotNull(transcript)
+        assertTrue(transcript?.transcript.orEmpty().contains("不买不买"))
+        assertTrue(transcript?.tasks.orEmpty().isEmpty())
+    }
+
+    @Test
     fun `setPhase keeps current session without changing transcript`() {
         val runtime = VoiceCallSessionRuntime()
         runtime.startSession("ella-call", "Ella", "ella")

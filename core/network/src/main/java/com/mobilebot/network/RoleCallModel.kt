@@ -26,17 +26,22 @@ interface RoleCallModel {
 }
 
 interface SpeechRecognizer {
-    suspend fun transcribePcm16(
-        pcm16: ByteArray,
-        sampleRate: Int = 16000,
+    suspend fun transcribeAudio(
+        audioBytes: ByteArray,
+        mimeType: String = "audio/wav",
     ): String
 }
 
+data class SpeechSynthesisResult(
+    val audioUrl: String,
+)
+
 interface SpeechSynthesizer {
-    suspend fun synthesizePcm16(
+    suspend fun synthesizeSpeech(
         text: String,
-        sampleRate: Int = 16000,
-    ): ByteArray
+        voice: String = "Cherry",
+        languageType: String = "Chinese",
+    ): SpeechSynthesisResult
 }
 
 @Singleton
@@ -79,15 +84,8 @@ class QwenRoleCallModel
                 ?.trim()
                 ?.trim('"', '“', '”')
                 .orEmpty()
-            return RoleCallReply(text.ifBlank { defaultEllaReply(request.openingTurn) })
+            return RoleCallReply(text)
         }
-
-        private fun defaultEllaReply(openingTurn: Boolean): String =
-            if (openingTurn) {
-                "喂，我想麻烦你下午帮家里补点东西。"
-            } else {
-                "对，低脂牛奶和常用洗衣液优先，水果顺路再买就好。"
-            }
 
         private companion object {
             const val QWEN_TURBO = "qwen-turbo"
