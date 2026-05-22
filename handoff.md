@@ -3,7 +3,7 @@
 ## Current State
 
 - Refreshed: 2026-05-23, Asia/Shanghai.
-- Workspace: `D:\MyCodeSpace\mobileclaw`
+- Repo root: wherever this repository is cloned on the current PC. All commands below assume they are run from that repo root.
 - Branch: `demonstration-scenario-integration`
 - Remote branch: `origin/demonstration-scenario-integration`
 - App package: `com.mobilebot`
