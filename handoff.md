@@ -2,67 +2,100 @@
 
 ## Current State
 
-- Workspace used for this handoff: `D:\MyCodeSpace\mobileclaw`
+- Refreshed: 2026-05-23, Asia/Shanghai.
+- Workspace: `D:\MyCodeSpace\mobileclaw`
 - Branch: `demonstration-scenario-integration`
-- Remote to pull on the next PC: `origin/demonstration-scenario-integration`
+- Remote branch: `origin/demonstration-scenario-integration`
 - App package: `com.mobilebot`
-- Last device used here: `481QFGDR222MJ`
+- Last local Android device used: `481QFGDR222MJ`
 - Do not clear app data during validation. API keys live in app settings.
 
-## What Is Implemented
+## Non-Negotiable Boundary
 
-The current branch contains the PetSmart grooming flow plus the first real Ella semi-duplex voice-call path.
+Read `AGENTS.md` before changing scenario behavior.
 
-Implemented voice path:
+For open-ended scenario replies, do not keep adding local phrase lists or runtime branches as the primary solution.
 
-- Ella role call uses Qwen LLM through the existing OpenAI-compatible client.
+Default flow:
+
+1. Strengthen persona/scenario/planner prompts and structured schemas.
+2. Let the LLM normalize freeform language into a structured intent/disposition.
+3. Let the agent/planner apply commands from that normalized result.
+4. Keep runtime/system code limited to observed facts, lifecycle, state guards, and narrow protocol constraints.
+
+Allowed deterministic handling:
+
+- exact UI action keys,
+- narrow protocol guards,
+- ASR/noise cleanup,
+- tests or fallbacks that do not become the semantic source of truth.
+
+If normalization is wrong, fix the prompt/schema/candidate-intent boundary first.
+
+## Implemented Scope
+
+The branch contains the PetSmart grooming flow plus the first Qwen-backed Ella half-duplex voice-call path.
+
+Voice path:
+
+- Ella role call uses Qwen LLM through the OpenAI-compatible client.
 - User voice turns use DashScope/Qwen ASR.
 - Ella replies use DashScope/Qwen TTS.
-- Call mode is half-duplex push-to-talk:
-  - wait for Ella to finish speaking,
+- Call mode is push-to-talk half-duplex:
+  - wait for Ella audio to finish,
   - press and hold `Talk` / `按住说话`,
   - release to submit the recorded turn.
-- `VoiceCallSessionRuntime` stores turn-by-turn runtime transcripts and publishes `CallEndedEvent` with the runtime transcript on hangup.
-- Post-hangup planner path can create or update the family-shopping task from the runtime transcript.
+- `VoiceCallSessionRuntime` stores turn-by-turn transcripts and emits `CallEndedEvent` with runtime transcript on hangup.
+- Post-hangup planner can create/update the family-shopping task from the runtime transcript.
 
-Recent fixes included in this handoff:
+Recent fixes:
 
-- Fixed the push-to-talk gesture lifecycle. The record button no longer cancels its own press when `recording` changes.
-- Hardened ASR transcript normalization:
+- Fixed push-to-talk gesture lifecycle so recording no longer cancels itself when `recording` changes.
+- Hardened ASR normalization:
   - removed scenario keyword bias from the ASR prompt,
-  - drops leaked ASR instruction text if Qwen returns the prompt itself,
-  - strips leaked scenario suffixes after clear purchase refusal.
-- Removed local deterministic Ella refusal reply from `feature/chat`; Ella replies continue through the role-call LLM persona.
-- Fixed the family-shopping refusal boundary:
-  - Ella call-end task surfaces are planner-owned, matching the PetSmart pattern where LLM semantics are normalized before agent commands are applied,
-  - `plannerPolicy.familyShoppingCallTranscriptPolicy` now requires the LLM planner to normalize the transcript into `purchaseDisposition = accepted | declined | needs_clarification`,
-  - if the normalized disposition is `declined`, the planner must create/update the family-shopping task as `DONE`, omit purchase decisions, and avoid `BLOCKED` shopping candidates,
-  - local explicit refusal handling remains only as a narrow fallback/state-machine guard, not as the semantic source of truth.
+  - drops leaked ASR instruction text if Qwen returns prompt-like content,
+  - strips leaked scenario suffixes only as ASR/noise cleanup.
+- Removed feature-layer deterministic Ella refusal reply. Ella replies stay under the role-call LLM persona.
+- Added Ella spouse/requester persona boundary:
+  - Ella is the user's wife,
+  - Ella asks the user or AIOS to help arrange household shopping,
+  - Ella must not claim she is personally buying or executing the order.
+- Family-shopping call-end task surface is planner-owned.
+- `plannerPolicy.familyShoppingCallTranscriptPolicy` requires the LLM planner to normalize the transcript into `purchaseDisposition = accepted | declined | needs_clarification`.
+- If normalized disposition is `declined`, planner must produce a `DONE` family-shopping task, omit purchase decisions, and avoid `BLOCKED` shopping candidates.
+- Local shopping state sync treats a planner-produced `DONE`/no-decision shopping result as cancelled so later Ella/Ole events do not revive the shopping flow.
+- `AGENTS.md` now stores the project boundary against phrase-list drift.
 
-## Architecture Boundaries To Preserve
+## Architecture Boundaries
 
 SystemRuntime:
 
 - Emits already-observed system facts.
 - Manages call session lifecycle and runtime transcript storage.
-- Does not decide scenario meaning or write task-card business logic.
+- Does not decide open-ended scenario meaning or write task-card business copy.
 
 Feature Chat:
 
 - Renders UI and owns gesture/screen state.
 - Calls runtime, ASR/TTS, role-call model, and planner interfaces.
-- Must not contain scenario entities such as PetSmart, Kylin, Ella, Driver, Ole, etc.
+- Must not contain scenario-specific business entities such as PetSmart, Kylin, Ella, Driver, or Ole.
 
 Core Domain:
 
 - Generic LLM/tool/protocol layer only.
-- Must not contain scenario-specific entities or one-hour-flow copy.
+- Must not contain one-hour scenario copy or scenario-specific actors.
 
 Scenarios / skill assets:
 
-- Own concrete scenario policy, persona prompts, fallback copy, deterministic oracle code, and task surfaces.
+- Own concrete scenario policy, persona prompts, task surfaces, narrow deterministic fallbacks, and tests.
+- Scenario prompts/schemas are the first place to fix semantic normalization failures.
 
 ## Key Files
+
+Workspace rules:
+
+- `AGENTS.md`
+- `handoff.md`
 
 Voice/runtime:
 
@@ -74,12 +107,14 @@ Qwen role call / ASR / TTS:
 - `core/network/src/main/java/com/mobilebot/network/RoleCallModel.kt`
 - `core/network/src/main/java/com/mobilebot/network/DashScopeSpeechModels.kt`
 - `core/network/src/main/java/com/mobilebot/network/NetworkModule.kt`
+- `core/data/src/main/java/com/mobilebot/data/settings/UserSettingsResolution.kt`
 
 UI / ViewModel:
 
 - `feature/chat/src/main/java/com/mobilebot/chat/AgentExperienceModels.kt`
 - `feature/chat/src/main/java/com/mobilebot/chat/AgentExperienceScreen.kt`
 - `feature/chat/src/main/java/com/mobilebot/chat/AgentExperienceViewModel.kt`
+- `feature/chat/src/main/res/drawable-nodpi/call_jessica.png`
 
 Scenario policy:
 
@@ -87,14 +122,18 @@ Scenario policy:
 - `scenarios/one-hour-flow/src/main/java/com/mobilebot/scenarios/onehour/OneHourScenarioPolicy.kt`
 - `scenarios/family-shopping/src/main/java/com/mobilebot/scenarios/familyshopping/FamilyShoppingTaskSurface.kt`
 - `scenarios/family-shopping/src/main/java/com/mobilebot/scenarios/familyshopping/FamilyShoppingUserTurn.kt`
+- `scenarios/pet-grooming/src/main/java/com/mobilebot/scenarios/petgrooming/PetGroomingTaskSurface.kt`
 
 Tests:
 
 - `core/network/src/test/java/com/mobilebot/network/DashScopeSpeechModelsTest.kt`
 - `core/systemruntime/src/test/java/com/mobilebot/systemruntime/VoiceCallSessionRuntimeTest.kt`
 - `scenarios/one-hour-flow/src/test/java/com/mobilebot/scenarios/onehour/OneHourScenarioFlowTest.kt`
+- `core/domain/src/test/java/com/mobilebot/domain/agent/ScenarioAgentTurnRunnerTest.kt`
 
-## Validation Run Before Handoff
+## Last Validation
+
+Previously passed before this handoff refresh:
 
 ```powershell
 git diff --check
@@ -106,10 +145,9 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 .\gradlew.bat :core:systemruntime:testDebugUnitTest :core:domain:testDebugUnitTest :core:network:testDebugUnitTest :scenarios:runtime:testDebugUnitTest :scenarios:one-hour-flow:testDebugUnitTest :feature:chat:compileDebugKotlin :app:assembleDebug --console=plain
 ```
 
-Observed result:
+Observed result: both passed.
 
-- `git diff --check` passed.
-- Gradle validation passed.
+This handoff-only change should still run `git diff --check` before commit/push.
 
 ## Next PC Setup
 
@@ -120,45 +158,61 @@ git pull --ff-only origin demonstration-scenario-integration
 git status --short --branch
 ```
 
-Build and install without clearing app data:
+Build:
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
 .\gradlew.bat :app:assembleDebug --console=plain
+```
+
+Install without clearing app data:
+
+```powershell
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 adb shell monkey -p com.mobilebot -c android.intent.category.LAUNCHER 1
 ```
 
 If multiple Android devices are connected, explicitly pass `-s <serial>` to every `adb` command.
 
-## Suggested Device Test
+## Suggested Acceptance Test
 
-1. Launch the app and start the one-hour scenario.
+PetSmart baseline:
+
+1. Launch app and start the one-hour scenario.
 2. Accept the PetSmart 14:00 slot.
-3. Continue until Ella incoming call.
-4. Answer with AI.
-5. Wait for Ella TTS to finish.
-6. Press and hold `Talk`, say a refusal such as `我不想买`, then release.
-7. Confirm the user bubble contains only the spoken refusal, not ASR prompt text or scenario keywords.
-8. Let Ella reply through TTS, then hang up.
-9. Expected post-hangup result:
-   - planner creates/updates the family-shopping task from the normalized call transcript,
+3. Confirm Driver/reminder flow is created.
+4. Continue through pickup, arrival, service started, and progress.
+5. Confirm standby AI icon is dark when idle.
+
+Ella refusal path:
+
+1. Continue until Ella incoming call.
+2. Answer with AI.
+3. Wait for Ella TTS to finish.
+4. Press and hold `Talk`, say a refusal such as `我不想买`, then release.
+5. Confirm the user bubble contains only spoken text, not ASR prompt or scenario keywords.
+6. Let Ella reply through TTS, then hang up.
+7. Expected:
+   - planner uses `familyShoppingCallTranscriptPolicy`,
    - family-shopping task is `DONE`,
    - subtitle is `通话中已确认暂不采购`,
-   - no `BLOCKED` purchase decision is created,
-   - later Ella/Ole shopping follow-up events do not revive the purchase flow.
+   - no `BLOCKED` purchase decision remains,
+   - later Ella/Ole shopping events do not revive the purchase flow.
 
-Also test a positive path:
+Ella positive path:
 
 1. Repeat Ella call.
 2. Confirm purchase instead of refusing.
 3. Hang up.
-4. Expected result: family-shopping task is created from runtime transcript and can continue to market delivery candidate / purchase confirmation.
+4. Expected:
+   - family-shopping task is created from runtime transcript,
+   - market delivery candidate can block on purchase confirmation,
+   - confirming purchase sends Ole coordination and waits for order lock.
 
 ## Known Risks
 
-- Current voice path is half-duplex PTT. It does not implement full-duplex AEC or local VAD.
-- Runtime call transcript storage is in memory only. It is acceptable for the demo flow unless the app process is killed before hangup/planner handling.
-- TTS is non-streaming in the current implementation, so Ella audio starts only after the full TTS response is ready.
-- Device validation for this exact final commit should be repeated on the next PC after pulling.
+- Voice path is half-duplex PTT. It does not implement full-duplex AEC or local VAD.
+- Runtime call transcript storage is in memory only; app process death before hangup/planner handling can lose the transcript.
+- TTS is non-streaming; Ella audio starts only after the full TTS response is ready.
+- Device validation for the latest pushed commit should be repeated on the next PC.
